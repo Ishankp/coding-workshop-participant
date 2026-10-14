@@ -27,7 +27,7 @@ MEMBER = CurrentUser(id=10, role="employee")
 OUTSIDER = CurrentUser(id=99, role="manager")
 ADMIN = CurrentUser(id=1, role="admin")
 MILESTONE = {"id": 5, "project_id": 2, "title": "Migration", "description": "Move data",
-             "start_date": None, "end_date": None}
+             "start_date": None, "end_date": None, "completed_at": None}
 
 
 class FakeMilestoneRepository:
@@ -48,6 +48,7 @@ def fixture_service():
 def test_member_gets_milestone_with_project_id(service):
     milestone = service.get_milestone(MEMBER, 5)
     assert milestone["milestoneId"] == 5 and milestone["projectId"] == 2 and milestone["name"] == "Migration"
+    assert milestone["completedAt"] is None
 
 
 def test_missing_milestone_is_404(service):

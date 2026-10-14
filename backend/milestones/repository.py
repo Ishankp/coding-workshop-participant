@@ -21,7 +21,7 @@ class MilestoneRepository:
         """Return the milestone's details including its project_id, or None."""
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT id, project_id, title, description, start_date, end_date "
+                "SELECT id, project_id, title, description, start_date, end_date, completed_at "
                 "FROM milestones WHERE id = %s",
                 (milestone_id,),
             )

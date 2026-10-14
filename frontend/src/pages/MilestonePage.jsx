@@ -23,7 +23,11 @@ export default function MilestonePage() {
       </Link>
       <div className="page-title">
         <h1>{milestone.name}</h1>
-        <span className="status-badge">Milestone</span>
+        {milestone.completedAt ? (
+          <span className="status-badge milestone-status-completed">Completed {formatDate(milestone.completedAt)}</span>
+        ) : (
+          <span className="status-badge">Milestone</span>
+        )}
       </div>
 
       <dl className="card details">

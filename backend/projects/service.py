@@ -27,16 +27,40 @@ class ProjectService:
         self._repository = repository
         self._today = today
 
-    def list_projects_for_user(self, user: CurrentUser) -> list[dict]:
+    def list_projects_for_user(self, user: CurrentUser, query: str | None = None) -> list[dict]:
         """
-        Return the projects the user can see as [{projectId, title}]: every project
-        for admins, otherwise the user's own. An empty list is a normal result.
+        Return the projects the user can see: every project for admins, otherwise the
+        user's own. With query, only projects whose title or milestone titles contain
+        it. An empty list is a normal result.
+
+        Returns:
+            list: [{projectId, title, startDate, endDate, archivedAt, completedAt,
+                    timeElapsedPercent, daysLeft,     # schedule progress, as for milestones
+                    completion}]                      # see milestone_completion()
         """
         if user.is_admin:
-            rows = self._repository.find_all_projects()
+            rows = self._repository.find_all_projects(query)
         else:
-            rows = self._repository.find_projects_by_user_id(user.id)
-        return [{"projectId": row["id"], "title": row["title"]} for row in rows]
+            rows = self._repository.find_projects_by_user_id(user.id, query)
+        today = self._today()
+
+        milestones_by_project: dict[int, list[dict]] = {row["id"]: [] for row in rows}
+        for m in self._repository.find_milestones_for_projects(list(milestones_by_project)):
+            milestones_by_project[m["project_id"]].append(m)
+
+        return [
+            {
+                "projectId": row["id"],
+                "title": row["title"],
+                "startDate": row["start_date"],
+                "endDate": row["end_date"],
+                "archivedAt": row["archived_at"],
+                "completedAt": row["completed_at"],
+                **_schedule(row, today),
+                "completion": milestone_completion(milestones_by_project[row["id"]], today),
+            }
+            for row in rows
+        ]
 
     def get_project(self, user: CurrentUser, project_id: int) -> dict:
         """
@@ -55,6 +79,10 @@ class ProjectService:
             "budget": project["budget"] if (user.is_admin or user.is_manager) else None,
             "archivedAt": project["archived_at"],
             "completedAt": project["completed_at"],
+            **_schedule(project, self._today()),
+            "completion": milestone_completion(
+                self._repository.find_milestones_for_projects([project_id]), self._today()
+            ),
         }
 
     def get_project_members(self, user: CurrentUser, project_id: int) -> list[dict]:
@@ -93,7 +121,7 @@ class ProjectService:
 
         Returns:
             dict: {
-                "milestones": [{milestoneId, name, startDate, endDate, timeElapsedPercent,
+                "milestones": [{milestoneId, name, startDate, endDate, completedAt, timeElapsedPercent,
                                 daysLeft, status, employees: [{employeeId, name, username}]}],
                 "unassignedEmployees": [{employeeId, name, username}],
             }
@@ -114,7 +142,8 @@ class ProjectService:
                     "name": row["milestone_name"],
                     "startDate": row["start_date"],
                     "endDate": row["end_date"],
-                    **milestone_timeline(row["start_date"], row["end_date"], today),
+                    "completedAt": row["completed_at"],
+                    **milestone_timeline(row["start_date"], row["end_date"], today, bool(row["completed_at"])),
                     "employees": [],
                 }
             if row["employee_id"] is not None:
@@ -192,6 +221,74 @@ class ProjectService:
         if not user.is_admin and not self._repository.is_project_member(project_id, user.id):
             raise ForbiddenError("You are not a member of this project")
         return project
+
+
+# An unfinished milestone can never count as fully done, however far along its schedule is
+_MAX_INCOMPLETE_PROGRESS = 0.99
+
+
+def milestone_completion(milestones: list[dict], today: date) -> dict:
+    """
+    How much of a project is done, judged by its milestones.
+
+    Each milestone owns a share of the project proportional to its planned length
+    (end - start in days, at least 1). Milestones without both dates get the
+    average share of the dated ones (or an equal share if none are dated).
+
+    A completed milestone contributes its whole share. An unfinished one contributes
+    its share times how far through its schedule it is (as a milestone's time-elapsed
+    percent), capped at 99% so the project only reaches 100 when every milestone is
+    complete. Unfinished milestones without dates contribute nothing.
+
+    Returns:
+        dict: {percent (None without milestones), completedMilestones, totalMilestones,
+               segments: [{milestoneId, name, weightPercent, completed, progressPercent, status}]}
+              # segments in schedule order; status as in milestone_timeline()
+    """
+    if not milestones:
+        return {"percent": None, "completedMilestones": 0, "totalMilestones": 0, "segments": []}
+
+    durations = [
+        max((m["end_date"] - m["start_date"]).days, 1) if m["start_date"] and m["end_date"] else None
+        for m in milestones
+    ]
+    dated = [d for d in durations if d is not None]
+    fallback = sum(dated) / len(dated) if dated else 1.0
+    weights = [d if d is not None else fallback for d in durations]
+    total = sum(weights)
+
+    segments = []
+    done = 0.0
+    for m, w in zip(milestones, weights):
+        completed = m["completed_at"] is not None
+        timeline = milestone_timeline(m["start_date"], m["end_date"], today, completed)
+        if completed:
+            progress = 1.0
+        else:
+            progress = min(elapsed_fraction(m["start_date"], m["end_date"], today) or 0.0, _MAX_INCOMPLETE_PROGRESS)
+        done += w * progress
+        segments.append({
+            "milestoneId": m["id"],
+            "name": m["title"],
+            "weightPercent": round(w / total * 100, 1),
+            "completed": completed,
+            "progressPercent": round(progress * 100),
+            "status": timeline["status"],
+        })
+
+    all_complete = all(s["completed"] for s in segments)
+    return {
+        "percent": 100 if all_complete else min(round(done / total * 100), 99),
+        "completedMilestones": sum(1 for s in segments if s["completed"]),
+        "totalMilestones": len(segments),
+        "segments": segments,
+    }
+
+
+def _schedule(project: dict, today: date) -> dict:
+    """The project's {timeElapsedPercent, daysLeft}, computed like a milestone's."""
+    timeline = milestone_timeline(project["start_date"], project["end_date"], today)
+    return {"timeElapsedPercent": timeline["timeElapsedPercent"], "daysLeft": timeline["daysLeft"]}
 
 
 def _money(value: Decimal) -> Decimal:

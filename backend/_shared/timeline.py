@@ -19,7 +19,7 @@ def elapsed_fraction(start: date | None, end: date | None, today: date) -> float
     return min(max((today - start).days / total_days, 0.0), 1.0)
 
 
-def milestone_timeline(start: date | None, end: date | None, today: date) -> dict:
+def milestone_timeline(start: date | None, end: date | None, today: date, completed: bool = False) -> dict:
     """
     Describe how far through its scheduled time a milestone is.
 
@@ -29,22 +29,26 @@ def milestone_timeline(start: date | None, end: date | None, today: date) -> dic
                                   (0 before it starts, 100 once the end date has passed),
                                   or None if either date is missing,
             "daysLeft": days until the end date (negative once past), or None,
-            "status": "not_started" | "in_progress" | "past_end_date" | "unscheduled",
+            "status": "completed" | "not_started" | "in_progress" | "past_end_date" | "unscheduled",
         }
+    A completed milestone is "completed" whatever its dates say.
     """
     days_left = (end - today).days if end else None
     fraction = elapsed_fraction(start, end, today)
-    if fraction is None:
-        return {"timeElapsedPercent": None, "daysLeft": days_left, "status": "unscheduled"}
+    percent = None if fraction is None else round(fraction * 100)
 
-    if today < start:
+    if completed:
+        status = "completed"
+    elif fraction is None:
+        status = "unscheduled"
+    elif today < start:
         status = "not_started"
     elif today > end:
         status = "past_end_date"
     else:
         status = "in_progress"
 
-    return {"timeElapsedPercent": round(fraction * 100), "daysLeft": days_left, "status": status}
+    return {"timeElapsedPercent": percent, "daysLeft": days_left, "status": status}
 
 
 def full_name(first_name: str | None, last_name: str | None, fallback: str) -> str:

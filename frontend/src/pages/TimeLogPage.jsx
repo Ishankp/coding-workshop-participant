@@ -114,7 +114,16 @@ export default function TimeLogPage() {
                   </td>
                   <td className="num">{formatHours(entry.hours)}</td>
                   <td className={entry.note ? '' : 'muted'}>{entry.note ?? '—'}</td>
-                  <td className="muted">{entry.loggedBy?.name ?? '—'}</td>
+                  <td>
+                    {entry.loggedBySelf ? (
+                      <span className="muted">{employee.isSelf ? 'You' : employee.name}</span>
+                    ) : (
+                      <span className="logged-by">
+                        {entry.loggedBy?.name ?? '—'}
+                        {entry.loggedBy && <span className="role-badge">{entry.loggedBy.role}</span>}
+                      </span>
+                    )}
+                  </td>
                   {permissions.canDelete && (
                     <td className="num">
                       <button

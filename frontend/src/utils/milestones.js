@@ -1,5 +1,6 @@
 /** Display labels for the milestone status values the API returns. */
 export const MILESTONE_STATUS_LABELS = {
+  completed: 'Completed',
   not_started: 'Not started',
   in_progress: 'In progress',
   past_end_date: 'Past end date',

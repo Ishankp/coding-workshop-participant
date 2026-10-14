@@ -13,7 +13,8 @@ from psycopg import Connection
 _ENTRY_SELECT = (
     "SELECT t.id, t.work_date, t.hours, t.note, t.created_at, t.created_by_user_id, "
     "       m.id AS milestone_id, m.title AS milestone_name, p.id AS project_id, p.title AS project_title, "
-    "       cb.first_name AS cb_first_name, cb.last_name AS cb_last_name, cb.username AS cb_username "
+    "       cb.first_name AS cb_first_name, cb.last_name AS cb_last_name, cb.username AS cb_username, "
+    "       cb.role AS cb_role "
     "FROM time_entries t "
     "JOIN milestones m ON m.id = t.milestone_id "
     "JOIN projects p ON p.id = m.project_id "
@@ -27,18 +28,12 @@ class TimeEntryRepository:
     def __init__(self, get_connection: Callable[[], Connection]) -> None:
         self._get_connection = get_connection
 
-    def find_entries_by_employee(self, employee_id: int, created_by_user_id: int | None = None) -> list[dict]:
-        """
-        Return the employee's entries, newest work date first; may be empty.
-        With created_by_user_id, only entries that user logged are returned.
-        """
+    def find_entries_by_employee(self, employee_id: int) -> list[dict]:
+        """Return the employee's entries, newest work date first; may be empty."""
         with self._get_connection().cursor() as cur:
             cur.execute(
-                _ENTRY_SELECT
-                + "WHERE t.employee_id = %(employee_id)s "
-                "  AND (%(created_by)s::int IS NULL OR t.created_by_user_id = %(created_by)s::int) "
-                "ORDER BY t.work_date DESC, t.created_at DESC, t.id DESC",
-                {"employee_id": employee_id, "created_by": created_by_user_id},
+                _ENTRY_SELECT + "WHERE t.employee_id = %s ORDER BY t.work_date DESC, t.created_at DESC, t.id DESC",
+                (employee_id,),
             )
             return cur.fetchall()
 

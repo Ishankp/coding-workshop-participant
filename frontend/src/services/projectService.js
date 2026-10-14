@@ -3,18 +3,32 @@ import { apiRequest } from './api'
 const BASE = '/api/projects'
 
 /**
- * Projects the logged-in user is a member of. GET /api/projects
- * @returns {Promise<Array<{projectId: number, title: string}>>}
+ * How much of a project is done, judged by its milestones: each owns a share proportional
+ * to its planned length and contributes it in proportion to its progress (fully once complete,
+ * at most 99% before). `percent` is null without milestones and 100 only when all are complete.
+ * @typedef {{percent: number|null, completedMilestones: number, totalMilestones: number,
+ *   segments: Array<{milestoneId: number, name: string, weightPercent: number, completed: boolean,
+ *   progressPercent: number, status: string}>}} Completion
  */
-export function listProjects() {
-  return apiRequest(BASE)
+
+/**
+ * Projects the logged-in user can see (all of them for admins), with schedule progress.
+ * GET /api/projects?q=
+ * @param {string} [query] Only projects whose title or milestone names contain this text
+ * @returns {Promise<Array<{projectId: number, title: string, startDate: string|null, endDate: string|null,
+ *   archivedAt: string|null, completedAt: string|null, timeElapsedPercent: number|null, daysLeft: number|null,
+ *   completion: Completion}>>}
+ */
+export function listProjects(query = '') {
+  return apiRequest(query ? `${BASE}?q=${encodeURIComponent(query)}` : BASE)
 }
 
 /**
  * One project's details. GET /api/projects/{projectId}
  * @param {number|string} projectId
  * @returns {Promise<{projectId: number, title: string, startDate: string|null, endDate: string|null,
- *   budget: number|null, archivedAt: string|null, completedAt: string|null}>}
+ *   budget: number|null, archivedAt: string|null, completedAt: string|null,
+ *   timeElapsedPercent: number|null, daysLeft: number|null, completion: Completion}>}
  */
 export function getProject(projectId) {
   return apiRequest(`${BASE}/${encodeURIComponent(projectId)}`)
@@ -36,8 +50,8 @@ export function getProjectMembers(projectId) {
  * GET /api/projects/{projectId}/milestones
  * @param {number|string} projectId
  * @returns {Promise<{milestones: Array<{milestoneId: number, name: string, startDate: string|null,
- *   endDate: string|null, timeElapsedPercent: number|null, daysLeft: number|null,
- *   status: 'not_started'|'in_progress'|'past_end_date'|'unscheduled',
+ *   endDate: string|null, completedAt: string|null, timeElapsedPercent: number|null, daysLeft: number|null,
+ *   status: 'completed'|'not_started'|'in_progress'|'past_end_date'|'unscheduled',
  *   employees: Array<{employeeId: number, name: string, username: string}>}>,
  *   unassignedEmployees: Array<{employeeId: number, name: string, username: string}>}>}
  */

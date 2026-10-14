@@ -111,9 +111,17 @@ export default function EmployeePage() {
                         <span>
                           <span className="muted">End</span> {formatDate(milestone.endDate)}
                         </span>
-                        <span className="muted">{daysLeftText(milestone.daysLeft)}</span>
+                        {milestone.status === 'completed' ? (
+                          <span>
+                            <span className="muted">Completed</span> {formatDate(milestone.completedAt)}
+                          </span>
+                        ) : (
+                          <span className="muted">{daysLeftText(milestone.daysLeft)}</span>
+                        )}
                       </div>
-                      <TimeElapsedBar percent={milestone.timeElapsedPercent} status={milestone.status} />
+                      {milestone.status !== 'completed' && (
+                        <TimeElapsedBar percent={milestone.timeElapsedPercent} status={milestone.status} />
+                      )}
                     </li>
                   ))}
                 </ul>

@@ -1,13 +1,14 @@
 import { apiRequest } from './api'
 
 /**
- * Employees you can see: everyone for admins, otherwise yourself and people you share a project with.
- * GET /api/employees
+ * Employees you can see: everyone for admins, otherwise yourself, people you share a project
+ * with and your direct reports. GET /api/employees?q=
+ * @param {string} [query] Only people whose name, username or title contain this text
  * @returns {Promise<Array<{employeeId: number, name: string, username: string, title: string|null,
  *   role: 'admin'|'manager'|'employee'}>>}
  */
-export function listEmployees() {
-  return apiRequest('/api/employees')
+export function listEmployees(query = '') {
+  return apiRequest(query ? `/api/employees?q=${encodeURIComponent(query)}` : '/api/employees')
 }
 
 /**
@@ -42,7 +43,8 @@ export function getTimeLog(employeeId) {
 /**
  * @typedef {{entryId: number, workDate: string, hours: number, note: string|null,
  *   milestone: {milestoneId: number, name: string}, project: {projectId: number, title: string},
- *   loggedBy: {userId: number, name: string}|null, createdAt: string}} TimeEntry
+ *   loggedBy: {userId: number, name: string, role: string}|null, loggedBySelf: boolean,
+ *   createdAt: string}} TimeEntry
  */
 
 /**

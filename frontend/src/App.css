@@ -590,3 +590,216 @@ select[aria-invalid='true'] {
 .tone-under {
   color: var(--success);
 }
+
+.logged-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Search */
+
+.search-bar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  max-width: 480px;
+  margin: 1rem 0 0;
+}
+
+.search-bar input[type='search'] {
+  flex: 1;
+}
+
+/* Milestone groups (collapsible) */
+
+.milestone-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.milestone-group {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.milestone-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.milestone-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.milestone-group > summary::before {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+.milestone-group[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.milestone-group > summary:hover {
+  background: var(--bg);
+}
+
+.milestone-group-title {
+  font-weight: 600;
+}
+
+.milestone-group-count {
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.milestone-group .milestone-list,
+.milestone-group-empty {
+  padding: 0 0.75rem 0.75rem;
+}
+
+.milestone-group-empty {
+  margin: 0;
+}
+
+.milestone-group .milestone {
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.milestone-status-completed {
+  color: var(--success);
+  border-color: currentColor;
+}
+
+/* Project schedule bars */
+
+.card-link .milestone-header {
+  width: 100%;
+}
+
+.card-link .time-elapsed {
+  width: 100%;
+}
+
+.progress-completed .progress-fill {
+  background: var(--success);
+}
+
+.progress-archived .progress-fill {
+  background: var(--muted);
+}
+
+.schedule-card {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.schedule-card h2 {
+  margin: 0;
+}
+
+/* Milestone-weighted completion bar */
+
+.completion {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.completion-bar {
+  display: flex;
+  height: 0.75rem;
+}
+
+.completion-segment {
+  position: relative;
+  height: 100%;
+  border-right: 2px solid var(--surface);
+  overflow: hidden;
+}
+
+.completion-segment::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--segment-color);
+  opacity: 0.18;
+}
+
+.completion-segment:last-child {
+  border-right: none;
+}
+
+.completion-segment-fill {
+  position: relative;
+  height: 100%;
+  background: var(--segment-color);
+  opacity: 0.55;
+}
+
+.completion-segment.is-complete .completion-segment-fill {
+  opacity: 1;
+}
+
+.completion-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.35rem 1.5rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.completion-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.legend-swatch {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 3px;
+  background: var(--segment-color);
+  opacity: 0.25;
+}
+
+.legend-swatch.is-complete {
+  opacity: 1;
+}
+
+.legend-share {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend-state {
+  min-width: 7.5em;
+  text-align: right;
+  font-size: 0.8rem;
+}
+
+.schedule-note {
+  margin: 0;
+}

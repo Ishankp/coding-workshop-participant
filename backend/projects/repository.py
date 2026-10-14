@@ -9,6 +9,16 @@ from typing import Callable
 from psycopg import Connection
 
 from shared import membership
+from shared.search import contains_pattern
+
+_LIST_COLUMNS = "p.id, p.title, p.start_date, p.end_date, p.archived_at, p.completed_at"
+
+# A project matches a search when its title or one of its milestone titles contains the text
+# (The ::text casts let Postgres type the parameter when it's NULL.)
+_PROJECT_MATCHES = (
+    "(%(pattern)s::text IS NULL OR p.title ILIKE %(pattern)s::text "
+    " OR EXISTS (SELECT 1 FROM milestones sm WHERE sm.project_id = p.id AND sm.title ILIKE %(pattern)s::text))"
+)
 
 
 class ProjectRepository:
@@ -17,23 +27,29 @@ class ProjectRepository:
     def __init__(self, get_connection: Callable[[], Connection]) -> None:
         self._get_connection = get_connection
 
-    def find_projects_by_user_id(self, user_id: int) -> list[dict]:
-        """Return {id, title} for every project the user is assigned to; may be empty."""
+    def find_projects_by_user_id(self, user_id: int, query: str | None = None) -> list[dict]:
+        """
+        Return every project the user is assigned to, with its dates and status timestamps;
+        may be empty. With query, only projects whose title or milestone titles contain it.
+        """
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT p.id, p.title FROM projects p "
+                f"SELECT {_LIST_COLUMNS} FROM projects p "
                 "JOIN employee_projects ep ON ep.project_id = p.id "
                 "JOIN employees e ON e.id = ep.employee_id "
-                "WHERE e.user_id = %s "
+                "WHERE e.user_id = %(user_id)s AND " + _PROJECT_MATCHES + " "
                 "ORDER BY p.title",
-                (user_id,),
+                {"user_id": user_id, "pattern": contains_pattern(query) if query else None},
             )
             return cur.fetchall()
 
-    def find_all_projects(self) -> list[dict]:
-        """Return {id, title} for every project; may be empty."""
+    def find_all_projects(self, query: str | None = None) -> list[dict]:
+        """Return every project with its dates and status timestamps; may be empty. With query, only matches."""
         with self._get_connection().cursor() as cur:
-            cur.execute("SELECT id, title FROM projects ORDER BY title")
+            cur.execute(
+                f"SELECT {_LIST_COLUMNS} FROM projects p WHERE " + _PROJECT_MATCHES + " ORDER BY p.title",
+                {"pattern": contains_pattern(query) if query else None},
+            )
             return cur.fetchall()
 
     def find_project_by_id(self, project_id: int) -> dict | None:
@@ -83,7 +99,7 @@ class ProjectRepository:
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT m.id AS milestone_id, m.title AS milestone_name, m.start_date, m.end_date, "
+                "SELECT m.id AS milestone_id, m.title AS milestone_name, m.start_date, m.end_date, m.completed_at, "
                 "       e.id AS employee_id, u.first_name, u.last_name, u.username "
                 "FROM milestones m "
                 "LEFT JOIN (employee_milestones em "
@@ -115,6 +131,22 @@ class ProjectRepository:
                 (hours_per_year, project_id),
             )
             return cur.fetchone()
+
+    def find_milestones_for_projects(self, project_ids: list[int]) -> list[dict]:
+        """
+        Return every milestone of the given projects (id, project_id, title, dates,
+        completed_at), ordered by project then start date; may be empty.
+        """
+        if not project_ids:
+            return []
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT id, project_id, title, start_date, end_date, completed_at "
+                "FROM milestones WHERE project_id = ANY(%s) "
+                "ORDER BY project_id, start_date NULLS LAST, title, id",
+                (project_ids,),
+            )
+            return cur.fetchall()
 
     def find_members_without_milestones(self, project_id: int) -> list[dict]:
         """Return the project's members who aren't assigned to any of its milestones; may be empty."""

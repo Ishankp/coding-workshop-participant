@@ -2,12 +2,13 @@
 Time entry service: business rules for an employee's time log.
 
 Who can do what with employee E's log:
-  - E themselves: add to it (never remove), and see only the entries they
-    logged themselves, not ones a manager or admin added on their behalf
-  - E's direct manager (role manager): view everything, add and remove
-  - admins: view everything, add and remove, for anyone
-Everyone else gets 403, including teammates. Hours can only be logged on
-milestones E is assigned to, and not for days in the future.
+  - E themselves: view it and add to it (never remove entries)
+  - E's direct manager (role manager): view, add and remove
+  - admins: view, add and remove, for anyone
+Everyone else gets 403, including teammates. Every entry records who logged
+it and their role, so hours a manager adds on E's behalf are visibly marked.
+Hours can only be logged on milestones E is assigned to, and not for days in
+the future.
 """
 
 from dataclasses import dataclass
@@ -41,15 +42,17 @@ class TimeEntryService:
 
     def get_log(self, user: CurrentUser, employee_id: int) -> dict:
         """
-        Return an employee's time log: every entry for managers and admins, only
-        self-logged entries when the employee views their own log.
+        Return an employee's full time log.
 
         Returns:
             dict: {employee: {employeeId, name, isSelf}, totalHours,
                    permissions: {canAdd, canDelete},
                    assignments: [{milestoneId, milestoneName, projectId, projectTitle}],  # for the add form
                    entries: [{entryId, workDate, hours, note, milestone: {milestoneId, name},
-                              project: {projectId, title}, loggedBy: {userId, name} | None, createdAt}]}
+                              project: {projectId, title},
+                              loggedBy: {userId, name, role} | None,   # who entered it
+                              loggedBySelf,                           # False when a manager/admin added it
+                              createdAt}]}
 
         Raises:
             NotFoundError: no such employee.
@@ -59,15 +62,12 @@ class TimeEntryService:
         if not access.can_view:
             raise ForbiddenError("You can only view your own time log or those of your direct reports")
 
-        is_self = employee["user_id"] == user.id
-        # Employees see only what they logged themselves; managers and admins see the whole log
-        only_logged_by = user.id if (is_self and not user.is_admin) else None
-        entries = [_entry(row) for row in self._entries.find_entries_by_employee(employee_id, only_logged_by)]
+        entries = [_entry(row, employee["user_id"]) for row in self._entries.find_entries_by_employee(employee_id)]
         return {
             "employee": {
                 "employeeId": employee["employee_id"],
                 "name": full_name(employee["first_name"], employee["last_name"], employee["username"]),
-                "isSelf": is_self,
+                "isSelf": employee["user_id"] == user.id,
             },
             "totalHours": sum((e["hours"] for e in entries), Decimal(0)),
             "permissions": {"canAdd": access.can_add, "canDelete": access.can_delete},
@@ -95,7 +95,7 @@ class TimeEntryService:
             ForbiddenError: viewer may not add to this log.
             ValidationError: future date, or the employee isn't assigned to the milestone.
         """
-        _, access = self._load(user, employee_id)
+        employee, access = self._load(user, employee_id)
         if not access.can_add:
             raise ForbiddenError("You can only log hours for yourself or your direct reports")
 
@@ -108,7 +108,7 @@ class TimeEntryService:
             raise ValidationError("Invalid time entry", fields)
 
         entry_id = self._entries.insert_entry(employee_id, milestone_id, work_date, hours, note, user.id)
-        return _entry(self._entries.find_entry(entry_id, employee_id))
+        return _entry(self._entries.find_entry(entry_id, employee_id), employee["user_id"])
 
     def delete_entry(self, user: CurrentUser, employee_id: int, entry_id: int) -> None:
         """
@@ -141,12 +141,13 @@ class TimeEntryService:
         )
 
 
-def _entry(row: dict) -> dict:
+def _entry(row: dict, employee_user_id: int) -> dict:
     logged_by = None
     if row["created_by_user_id"] is not None:
         logged_by = {
             "userId": row["created_by_user_id"],
             "name": full_name(row["cb_first_name"], row["cb_last_name"], row["cb_username"] or ""),
+            "role": row["cb_role"],
         }
     return {
         "entryId": row["id"],
@@ -156,5 +157,6 @@ def _entry(row: dict) -> dict:
         "milestone": {"milestoneId": row["milestone_id"], "name": row["milestone_name"]},
         "project": {"projectId": row["project_id"], "title": row["project_title"]},
         "loggedBy": logged_by,
+        "loggedBySelf": row["created_by_user_id"] == employee_user_id,
         "createdAt": row["created_at"],
     }

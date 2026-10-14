@@ -8,7 +8,7 @@ Run from backend/projects (after ./bin/sync-shared.sh):  python3 -m pytest tests
 import json
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # pylint: disable=wrong-import-position
 import function
 from controller import ProjectController
-from service import ProjectService
+from service import ProjectService, milestone_completion
 from shared import tokens
 from shared.errors import ForbiddenError, NotFoundError
 from shared.http_utils import Router
@@ -46,8 +46,25 @@ MEMBER_ROWS = [
 TODAY = date(2026, 10, 14)
 
 
-def milestone_row(milestone_id, name, start, end, employee_id=None, first=None, last=None, username=None):
+def project_milestone(mid, project_id, title, start, end, completed_at=None):
+    return {"id": mid, "project_id": project_id, "title": title, "start_date": start, "end_date": end,
+            "completed_at": completed_at}
+
+
+# Project 1 (today Oct 14): a 10-day milestone done (10%), a 30-day one a third of the way
+# through (30% x 1/3 = 10%), a 60-day one not started -> 20% complete
+PROJECT_MILESTONES = [
+    project_milestone(1, 1, "Discovery", date(2026, 7, 1), date(2026, 7, 11), datetime(2026, 7, 10, 12)),
+    project_milestone(2, 1, "Design", date(2026, 10, 4), date(2026, 11, 3)),
+    project_milestone(3, 1, "Build", date(2026, 11, 3), date(2027, 1, 2)),
+    project_milestone(4, 2, "Mapping", date(2026, 9, 1), date(2026, 9, 11), datetime(2026, 9, 10)),
+]
+
+
+def milestone_row(milestone_id, name, start, end, employee_id=None, first=None, last=None, username=None,
+                  completed_at=None):
     return {"milestone_id": milestone_id, "milestone_name": name, "start_date": start, "end_date": end,
+            "completed_at": completed_at,
             "employee_id": employee_id, "first_name": first, "last_name": last, "username": username}
 
 
@@ -58,6 +75,7 @@ MILESTONE_ROWS = [
     milestone_row(3, "Overdue", date(2026, 9, 1), date(2026, 10, 1), 6, None, None, "kenji"),
     milestone_row(4, "Unscheduled", None, None, 3, "Priya", "Patel", "priya"),
     milestone_row(5, "Nearly done", date(2026, 9, 14), date(2026, 10, 24)),
+    milestone_row(6, "Finished", date(2026, 8, 1), date(2026, 9, 1), completed_at=datetime(2026, 8, 30, 12)),
 ]
 
 
@@ -73,9 +91,10 @@ class FakeProjectRepository:
         self.calls.append(("find_project_cost", hours_per_year))
         return dict(self.cost)
 
-    def find_projects_by_user_id(self, user_id):
-        self.calls.append("find_projects_by_user_id")
-        return [{"id": 1, "title": "Portal"}] if user_id == MEMBER.id else []
+    def find_projects_by_user_id(self, user_id, query=None):
+        self.calls.append(("find_projects_by_user_id", query))
+        rows = [dict(self.project)] if user_id == MEMBER.id else []
+        return [r for r in rows if query is None or query.lower() in r["title"].lower()]
 
     def find_project_by_id(self, project_id):
         self.calls.append("find_project_by_id")
@@ -89,13 +108,18 @@ class FakeProjectRepository:
         self.calls.append("find_members_with_milestones")
         return [dict(r) for r in MEMBER_ROWS] if project_id == 1 else []
 
+    def find_milestones_for_projects(self, project_ids):
+        self.calls.append(("find_milestones_for_projects", tuple(project_ids)))
+        return [dict(m) for m in PROJECT_MILESTONES if m["project_id"] in project_ids]
+
     def find_milestones_with_assignees(self, project_id):
         self.calls.append("find_milestones_with_assignees")
         return [dict(r) for r in MILESTONE_ROWS] if project_id == 1 else []
 
-    def find_all_projects(self):
-        self.calls.append("find_all_projects")
-        return [{"id": 1, "title": "Portal"}, {"id": 2, "title": "Warehouse"}]
+    def find_all_projects(self, query=None):
+        self.calls.append(("find_all_projects", query))
+        rows = [dict(self.project), {**PROJECT, "id": 2, "title": "Warehouse", "end_date": date(2026, 12, 31)}]
+        return [r for r in rows if query is None or query.lower() in r["title"].lower()]
 
     def find_members_without_milestones(self, project_id):
         self.calls.append("find_members_without_milestones")
@@ -115,7 +139,95 @@ def fixture_service(repo):
 # Service
 
 def test_list_projects_shapes_rows(service):
-    assert service.list_projects_for_user(MEMBER) == [{"projectId": 1, "title": "Portal"}]
+    [project] = service.list_projects_for_user(MEMBER)
+    completion = project.pop("completion")
+    assert project == {
+        "projectId": 1, "title": "Portal", "startDate": date(2026, 7, 1), "endDate": None,
+        "archivedAt": None, "completedAt": None, "timeElapsedPercent": None, "daysLeft": None,
+    }
+    assert completion["percent"] == 20 and completion["completedMilestones"] == 1
+
+
+def test_list_projects_loads_milestones_for_all_projects_in_one_query(service, repo):
+    projects = service.list_projects_for_user(ADMIN)
+    assert ("find_milestones_for_projects", (1, 2)) in repo.calls
+    assert [p["completion"]["percent"] for p in projects] == [20, 100]
+
+
+def test_project_detail_includes_completion(service):
+    completion = service.get_project(MEMBER, 1)["completion"]
+    assert completion["percent"] == 20 and completion["totalMilestones"] == 3
+    assert [(s["name"], s["weightPercent"], s["completed"], s["progressPercent"], s["status"])
+            for s in completion["segments"]] == [
+        ("Discovery", 10.0, True, 100, "completed"),
+        ("Design", 30.0, False, 33, "in_progress"),
+        ("Build", 60.0, False, 0, "not_started"),
+    ]
+
+
+# Milestone-weighted completion
+
+def test_completion_without_milestones_is_none():
+    assert milestone_completion([], TODAY) == {
+        "percent": None, "completedMilestones": 0, "totalMilestones": 0, "segments": [],
+    }
+
+
+def test_completion_reaches_100_only_when_all_done():
+    done = datetime(2026, 1, 1)
+    rows = [project_milestone(1, 1, "A", date(2026, 1, 1), date(2026, 1, 11), done),
+            project_milestone(2, 1, "B", date(2026, 1, 11), date(2026, 1, 21), done)]
+    assert milestone_completion(rows, TODAY)["percent"] == 100
+    # B's schedule is long past, so it's 99% along, but unfinished: the project must stay below 100
+    rows[1]["completed_at"] = None
+    result = milestone_completion(rows, TODAY)
+    assert result["percent"] == 99
+    assert result["segments"][1] == {"milestoneId": 2, "name": "B", "weightPercent": 50.0, "completed": False,
+                                     "progressPercent": 99, "status": "past_end_date"}
+
+
+def test_completion_in_progress_milestone_contributes_its_elapsed_share():
+    # Two equal 20-day milestones; the second is half way through -> 50% + 25% = 75%
+    rows = [project_milestone(1, 1, "A", date(2026, 9, 4), date(2026, 9, 24), datetime(2026, 9, 24)),
+            project_milestone(2, 1, "B", date(2026, 10, 4), date(2026, 10, 24))]
+    result = milestone_completion(rows, TODAY)
+    assert result["percent"] == 75
+    assert result["segments"][1]["progressPercent"] == 50 and result["segments"][1]["status"] == "in_progress"
+
+
+def test_completion_weights_by_duration_not_count():
+    done = datetime(2026, 1, 1)
+    rows = [project_milestone(1, 1, "Short", date(2026, 1, 1), date(2026, 1, 2), done),      # 1 day, done
+            project_milestone(2, 1, "Long", date(2026, 11, 1), date(2026, 11, 20))]        # 19 days, not started
+    assert milestone_completion(rows, TODAY)["percent"] == 5
+
+
+def test_completion_undated_milestone_gets_average_share_but_no_progress():
+    rows = [project_milestone(1, 1, "A", date(2026, 1, 1), date(2026, 1, 11), datetime(2026, 1, 1)),  # 10 days
+            project_milestone(2, 1, "B", date(2026, 11, 1), date(2026, 12, 1)),                        # 30 days
+            project_milestone(3, 1, "No dates", None, None)]                                            # avg = 20
+    result = milestone_completion(rows, TODAY)
+    assert [s["weightPercent"] for s in result["segments"]] == [16.7, 50.0, 33.3]
+    assert result["segments"][2]["progressPercent"] == 0 and result["segments"][2]["status"] == "unscheduled"
+    assert result["percent"] == 17
+
+
+def test_completion_all_undated_is_equal_shares():
+    rows = [project_milestone(i, 1, f"M{i}", None, None, datetime(2026, 1, 1) if i == 1 else None)
+            for i in (1, 2, 3, 4)]
+    assert milestone_completion(rows, TODAY)["percent"] == 25
+
+
+def test_list_projects_includes_schedule_progress(service):
+    warehouse = service.list_projects_for_user(ADMIN)[1]
+    # Jul 1 -> Dec 31 (183 days), 105 elapsed by Oct 14
+    assert warehouse["timeElapsedPercent"] == 57 and warehouse["daysLeft"] == 78
+
+
+def test_project_detail_includes_schedule_progress(service, repo):
+    repo.project.update({"start_date": date(2026, 10, 4), "end_date": date(2026, 10, 24)})
+    project = service.get_project(MEMBER, 1)
+    assert project["timeElapsedPercent"] == 50 and project["daysLeft"] == 10
 
 
 def test_list_projects_empty_is_not_an_error(service):
@@ -186,7 +298,8 @@ def get(path, user=None, token=None):
 def test_list_route_local_and_cloudfront_paths(handler, path):
     response = handler(get(path, MEMBER))
     assert response["statusCode"] == 200
-    assert json.loads(response["body"]) == [{"projectId": 1, "title": "Portal"}]
+    body = json.loads(response["body"])
+    assert [p["title"] for p in body] == ["Portal"] and body[0]["startDate"] == "2026-07-01"
 
 
 def test_project_json_encodes_dates_and_decimals(handler):
@@ -230,7 +343,7 @@ def test_expired_token_is_401(handler, monkeypatch):
 
 
 def test_unexpected_error_is_generic_500(handler, repo, monkeypatch):
-    def boom(_user_id):
+    def boom(_user_id, _query=None):
         raise RuntimeError("db exploded: secret details")
     monkeypatch.setattr(repo, "find_projects_by_user_id", boom)
     response = handler(get("/", MEMBER))
@@ -256,10 +369,23 @@ def test_milestone_timeline(start, end, percent, days_left, status):
     }
 
 
+def test_completed_milestone_is_completed_whatever_its_dates():
+    assert milestone_timeline(date(2026, 9, 1), date(2026, 10, 1), TODAY, completed=True)["status"] == "completed"
+    assert milestone_timeline(date(2026, 11, 1), date(2026, 12, 1), TODAY, completed=True)["status"] == "completed"
+    assert milestone_timeline(None, None, TODAY, completed=True)["status"] == "completed"
+
+
+def test_project_milestones_carry_completed_status(service):
+    by_name = {m["name"]: m for m in service.get_project_milestones(MEMBER, 1)["milestones"]}
+    assert by_name["Finished"]["status"] == "completed"
+    assert by_name["Finished"]["completedAt"] == datetime(2026, 8, 30, 12)
+    assert by_name["Overdue"]["status"] == "past_end_date" and by_name["Overdue"]["completedAt"] is None
+
+
 def test_milestones_sorted_by_time_elapsed_then_end_date(service):
     names = [m["name"] for m in service.get_project_milestones(MEMBER, 1)["milestones"]]
-    # Overdue 100%, Nearly done 75%, Halfway 50% (same end date as Nearly done), Upcoming 0%, Unscheduled last
-    assert names == ["Overdue", "Nearly done", "Halfway", "Upcoming", "Unscheduled"]
+    # Finished and Overdue 100% (earlier end date first), Nearly done 75%, Halfway 50%, Upcoming 0%, Unscheduled last
+    assert names == ["Finished", "Overdue", "Nearly done", "Halfway", "Upcoming", "Unscheduled"]
 
 
 def test_milestones_grouped_with_employees(service):
@@ -283,7 +409,8 @@ def test_milestones_route(handler):
     response = handler(get("/api/projects/1/milestones", MEMBER))
     assert response["statusCode"] == 200
     first = json.loads(response["body"])["milestones"][0]
-    assert first["name"] == "Overdue" and first["startDate"] == "2026-09-01"
+    assert first["name"] == "Finished" and first["startDate"] == "2026-08-01"
+    assert first["status"] == "completed" and first["completedAt"] == "2026-08-30T12:00:00"
     assert handler(get("/1/milestones", OUTSIDER))["statusCode"] == 403
 
 
@@ -296,7 +423,7 @@ def test_milestones_lists_members_without_a_milestone(service):
 
 def test_admin_lists_all_projects(service, repo):
     assert [p["title"] for p in service.list_projects_for_user(ADMIN)] == ["Portal", "Warehouse"]
-    assert "find_projects_by_user_id" not in repo.calls
+    assert not any(c[0] == "find_projects_by_user_id" for c in repo.calls if isinstance(c, tuple))
 
 
 def test_admin_skips_membership_check(service, repo):
@@ -393,3 +520,32 @@ def test_budget_route(handler, budget_repo):  # pylint: disable=unused-argument
     assert response["statusCode"] == 200
     assert json.loads(response["body"])["variance"]["direction"] == "over"
     assert handler(get("/1/budget", MEMBER))["statusCode"] == 403
+
+
+# Search
+
+def test_search_is_passed_to_the_right_query(service, repo):
+    assert [p["title"] for p in service.list_projects_for_user(ADMIN, "ware")] == ["Warehouse"]
+    assert ("find_all_projects", "ware") in repo.calls
+    assert service.list_projects_for_user(MEMBER, "ware") == []
+    assert ("find_projects_by_user_id", "ware") in repo.calls
+
+
+def test_search_query_param_is_trimmed_and_blank_means_no_filter(handler, repo):
+    def get_q(q):
+        ev = get("/", ADMIN)
+        ev["queryStringParameters"] = {"q": q}
+        return handler(ev)
+
+    assert [p["title"] for p in json.loads(get_q("  port ")["body"])] == ["Portal"]
+    assert ("find_all_projects", "port") in repo.calls
+    assert len(json.loads(get_q("   ")["body"])) == 2
+    assert ("find_all_projects", None) in repo.calls
+
+
+def test_search_query_too_long_is_400(handler):
+    ev = get("/", ADMIN)
+    ev["queryStringParameters"] = {"q": "x" * 101}
+    response = handler(ev)
+    assert response["statusCode"] == 400
+    assert "q" in json.loads(response["body"])["error"]["fields"]

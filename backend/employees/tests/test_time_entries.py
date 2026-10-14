@@ -42,8 +42,8 @@ EMPLOYEES = {
     4: {"employee_id": 4, "user_id": 5, "manager_id": 1, "first_name": "James", "last_name": "Smith",
         "username": "james"},
 }
-USER_NAMES = {1: ("Alice", "Admin", "admin"), 2: ("Maria", "Gonzalez", "maria"), 4: ("Priya", "Patel", "priya"),
-              5: ("James", "Smith", "james")}
+USERS = {1: ("Alice", "Admin", "admin", "admin"), 2: ("Maria", "Gonzalez", "maria", "manager"),
+         4: ("Priya", "Patel", "priya", "employee"), 5: ("James", "Smith", "james", "employee")}
 ASSIGNMENTS = {
     3: [(2, "Design System", 1, "Portal"), (6, "Beta Release", 3, "Mobile")],
     4: [(2, "Design System", 1, "Portal")],
@@ -80,13 +80,13 @@ class FakeTimeEntryRepository:
 
     def insert_entry(self, employee_id, milestone_id, work_date, hours, note, created_by_user_id):  # pylint: disable=too-many-arguments
         milestone = next(a for a in ASSIGNMENTS[employee_id] if a[0] == milestone_id)
-        first, last, username = USER_NAMES[created_by_user_id]
+        first, last, username, role = USERS[created_by_user_id]
         row = {
             "id": self.next_id, "employee_id": employee_id, "work_date": work_date, "hours": hours, "note": note,
             "created_at": datetime(2026, 10, 14, 9, 0, self.next_id), "created_by_user_id": created_by_user_id,
             "milestone_id": milestone[0], "milestone_name": milestone[1],
             "project_id": milestone[2], "project_title": milestone[3],
-            "cb_first_name": first, "cb_last_name": last, "cb_username": username,
+            "cb_first_name": first, "cb_last_name": last, "cb_username": username, "cb_role": role,
         }
         self.rows.append(row)
         self.next_id += 1
@@ -95,9 +95,8 @@ class FakeTimeEntryRepository:
     def find_entry(self, entry_id, employee_id):
         return next((dict(r) for r in self.rows if r["id"] == entry_id and r["employee_id"] == employee_id), None)
 
-    def find_entries_by_employee(self, employee_id, created_by_user_id=None):
-        rows = [dict(r) for r in self.rows if r["employee_id"] == employee_id
-                and (created_by_user_id is None or r["created_by_user_id"] == created_by_user_id)]
+    def find_entries_by_employee(self, employee_id):
+        rows = [dict(r) for r in self.rows if r["employee_id"] == employee_id]
         return sorted(rows, key=lambda r: (r["work_date"], r["created_at"], r["id"]), reverse=True)
 
     def delete_entry(self, entry_id, employee_id):
@@ -141,32 +140,27 @@ def test_other_managers_and_teammates_cannot_view_log(service, user):
 
 
 def test_log_contents_newest_first_with_total_and_assignments(service):
-    log = service.get_log(MARIA, 3)
+    log = service.get_log(PRIYA, 3)
     assert log["totalHours"] == Decimal("15.00")
     assert [e["workDate"] for e in log["entries"]] == [date(2026, 10, 1), date(2026, 9, 29), date(2026, 9, 15)]
     assert log["entries"][2]["note"] == "Mockups"
     assert log["entries"][0]["project"]["title"] == "Portal"
-    assert log["entries"][0]["loggedBy"] == {"userId": 4, "name": "Priya Patel"}
+    assert log["entries"][0]["loggedBy"] == {"userId": 4, "name": "Priya Patel", "role": "employee"}
     assert [a["milestoneName"] for a in log["assignments"]] == ["Design System", "Beta Release"]
 
 
-def test_employee_sees_only_entries_they_logged_themselves(service):
-    log = service.get_log(PRIYA, 3)
-    assert all(e["loggedBy"]["userId"] == PRIYA.id for e in log["entries"])
-    assert len(log["entries"]) == 2 and log["totalHours"] == Decimal("13.00")
+def test_entries_mark_who_logged_them_and_their_role(service):
+    entries = {e["note"]: e for e in service.get_log(PRIYA, 3)["entries"]}
+    manager_entry, own_entry = entries["Added by manager"], entries["Mockups"]
+    assert manager_entry["loggedBy"] == {"userId": 2, "name": "Maria Gonzalez", "role": "manager"}
+    assert manager_entry["loggedBySelf"] is False
+    assert own_entry["loggedBy"]["role"] == "employee" and own_entry["loggedBySelf"] is True
 
 
-@pytest.mark.parametrize("user", [MARIA, ADMIN])
-def test_manager_and_admin_see_manager_added_entries(service, user):
-    log = service.get_log(user, 3)
-    assert any(e["loggedBy"]["userId"] == MARIA.id for e in log["entries"])
-    assert len(log["entries"]) == 3
-
-
-def test_manager_added_entry_is_hidden_from_employee_but_counted_for_manager(service):
+def test_employee_sees_manager_added_hours_in_their_total(service):
     service.add_entry(MARIA, 3, **valid_entry())
-    assert len(service.get_log(PRIYA, 3)["entries"]) == 2
-    assert len(service.get_log(MARIA, 3)["entries"]) == 4
+    log = service.get_log(PRIYA, 3)
+    assert len(log["entries"]) == 4 and log["totalHours"] == Decimal("22.50")
 
 
 def test_log_missing_employee_is_404(service):
@@ -184,7 +178,8 @@ def test_employee_adds_to_own_log(service, entries):
 
 def test_manager_adds_for_report_and_is_recorded_as_logger(service):
     entry = service.add_entry(MARIA, 3, **valid_entry())
-    assert entry["loggedBy"] == {"userId": 2, "name": "Maria Gonzalez"}
+    assert entry["loggedBy"] == {"userId": 2, "name": "Maria Gonzalez", "role": "manager"}
+    assert entry["loggedBySelf"] is False
 
 
 def test_admin_adds_for_anyone(service):
@@ -287,7 +282,7 @@ VALID_BODY = {"milestoneId": 2, "workDate": "2026-10-13", "hours": 7.5}
 def test_handler_get_log(handler):
     response = handler(event("GET", "/api/employees/3/time-entries", PRIYA))
     assert response["statusCode"] == 200
-    assert json.loads(response["body"])["totalHours"] == 13.0
+    assert json.loads(response["body"])["totalHours"] == 15.0
 
 
 def test_handler_add_returns_201_with_entry(handler):

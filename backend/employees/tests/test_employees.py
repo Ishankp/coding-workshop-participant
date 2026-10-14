@@ -46,13 +46,14 @@ LIST_ROW = {"employee_id": 3, "title": "Senior UX Designer", "username": "priya"
 PROJECT_ROWS = [
     {"project_id": 1, "project_title": "Portal", "archived_at": None, "completed_at": None,
      "hours_spent": Decimal("120.50"), "milestone_id": 2, "milestone_name": "Design",
-     "start_date": date(2026, 10, 4), "end_date": date(2026, 10, 24)},
+     "start_date": date(2026, 10, 4), "end_date": date(2026, 10, 24), "milestone_completed_at": None},
     {"project_id": 1, "project_title": "Portal", "archived_at": None, "completed_at": None,
      "hours_spent": Decimal("30.25"), "milestone_id": 3, "milestone_name": "Build",
-     "start_date": date(2026, 11, 1), "end_date": date(2026, 12, 1)},
+     "start_date": date(2026, 11, 1), "end_date": date(2026, 12, 1),
+     "milestone_completed_at": datetime(2026, 10, 10, 9)},
     {"project_id": 3, "project_title": "Mobile", "archived_at": None, "completed_at": datetime(2026, 6, 28),
      "hours_spent": None, "milestone_id": None, "milestone_name": None,
-     "start_date": None, "end_date": None},
+     "start_date": None, "end_date": None, "milestone_completed_at": None},
 ]
 
 
@@ -74,13 +75,14 @@ class FakeEmployeeRepository:
         self.calls.append(("find_projects_with_milestones", visible_to_user_id))
         return [dict(r) for r in PROJECT_ROWS] if employee_id == 3 else []
 
-    def find_all_employees(self):
-        self.calls.append("find_all_employees")
-        return [LIST_ROW, {**LIST_ROW, "employee_id": 9, "username": "loner", "first_name": "Lone"}]
+    def find_all_employees(self, query=None):
+        self.calls.append(("find_all_employees", query))
+        rows = [LIST_ROW, {**LIST_ROW, "employee_id": 9, "username": "loner", "first_name": "Lone"}]
+        return [r for r in rows if query is None or query.lower() in r["first_name"].lower()]
 
-    def find_employees_visible_to(self, user_id):
-        self.calls.append("find_employees_visible_to")
-        return [LIST_ROW]
+    def find_employees_visible_to(self, user_id, query=None):
+        self.calls.append(("find_employees_visible_to", query))
+        return [LIST_ROW] if query is None or query.lower() in LIST_ROW["first_name"].lower() else []
 
     def is_manager_of(self, employee_id, user_id):
         self.calls.append("is_manager_of")
@@ -141,7 +143,9 @@ def test_projects_grouped_with_milestones_and_progress(service):
     assert portal["status"] == "active"
     assert [m["name"] for m in portal["milestones"]] == ["Design", "Build"]
     assert portal["milestones"][0]["timeElapsedPercent"] == 50
-    assert portal["milestones"][1]["status"] == "not_started"
+    # Build is marked complete even though its dates are in the future
+    assert portal["milestones"][1]["status"] == "completed"
+    assert portal["milestones"][1]["completedAt"] == datetime(2026, 10, 10, 9)
 
     assert mobile["status"] == "completed" and mobile["milestones"] == []
 
@@ -213,7 +217,7 @@ def test_non_admin_lists_people_sharing_a_project(service, repo):
     assert service.list_employees(TEAMMATE_USER) == [
         {"employeeId": 3, "name": "Priya Patel", "username": "priya", "title": "Senior UX Designer", "role": "employee"},
     ]
-    assert "find_all_employees" not in repo.calls
+    assert not any(c[0] == "find_all_employees" for c in repo.calls if isinstance(c, tuple))
 
 
 # Hours
@@ -248,3 +252,20 @@ def test_manager_of_someone_else_is_still_limited(service):
 @pytest.mark.parametrize("user,can_view", [(PRIYA_USER, True), (ADMIN, True), (TEAMMATE_USER, False)])
 def test_can_view_time_log_flag(service, user, can_view):
     assert service.get_employee(user, 3)["canViewTimeLog"] is can_view
+
+
+# Search
+
+def test_search_people_respects_visibility(service, repo):
+    assert [e["username"] for e in service.list_employees(ADMIN, "lone")] == ["loner"]
+    assert ("find_all_employees", "lone") in repo.calls
+    assert service.list_employees(TEAMMATE_USER, "lone") == []
+    assert ("find_employees_visible_to", "lone") in repo.calls
+
+
+def test_search_people_route(handler):
+    ev = get("/", TEAMMATE_USER)
+    ev["queryStringParameters"] = {"q": "pri"}
+    assert [e["username"] for e in json.loads(handler(ev)["body"])] == ["priya"]
+    ev["queryStringParameters"] = {"q": "zzz"}
+    assert json.loads(handler(ev)["body"]) == []

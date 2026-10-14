@@ -7,6 +7,7 @@ calls the service, and builds the response.
 
 from service import EmployeeService
 from shared.http_utils import Request, json_response
+from shared.search import read_search_query
 from shared.tokens import require_user
 
 
@@ -17,9 +18,9 @@ class EmployeeController:
         self._service = service
 
     def list_employees(self, request: Request) -> dict:
-        """GET /employees -> 200 [{employeeId, name, username, title, role}] (everyone for admins) | 401"""
+        """GET /employees?q=text -> 200 [{employeeId, name, username, title, role}] (everyone for admins) | 400 | 401"""
         user = require_user(request)
-        return json_response(200, self._service.list_employees(user))
+        return json_response(200, self._service.list_employees(user, read_search_query(request)))
 
     def get_employee(self, request: Request) -> dict:
         """GET /employees/{employeeId} -> 200 employee profile | 400 | 401 | 403 | 404"""

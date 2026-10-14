@@ -7,7 +7,9 @@ import BudgetCard from '../components/BudgetCard'
 import EmployeeChips from '../components/EmployeeChips'
 import MilestoneList from '../components/MilestoneList'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
+import CompletionBar from '../components/CompletionBar'
 import { formatCurrency, formatDate, projectStatus } from '../utils/format'
+import { daysLeftText } from '../utils/milestones'
 
 /**
  * One project: its details (budget vs spend for managers and admins), then its
@@ -74,10 +76,29 @@ export default function ProjectDetailPage() {
         )}
       </dl>
 
+      <div className="card schedule-card">
+        <div className="milestone-header">
+          <h2>Progress</h2>
+          <span className="muted small">
+            {project.completion.percent !== null &&
+              `${project.completion.completedMilestones} of ${project.completion.totalMilestones} milestones complete`}
+          </span>
+        </div>
+        <CompletionBar completion={project.completion} legend />
+        {project.timeElapsedPercent !== null && (
+          <p className="muted small schedule-note">
+            Schedule: {project.timeElapsedPercent}% of the planned time used · {daysLeftText(project.daysLeft)}
+          </p>
+        )}
+      </div>
+
       {budget && <BudgetCard budget={budget} />}
 
       <h2 className="section-title">Milestones ({milestones.length})</h2>
-      <p className="muted section-hint">Sorted by time elapsed. Milestones closest to their end date are on top.</p>
+      <p className="muted section-hint">
+        Grouped by state; within a group, milestones closest to their end date are on top. Click a heading to
+        collapse or expand it.
+      </p>
       <MilestoneList milestones={milestones} />
 
       <h2 className="section-title">Not assigned to a milestone ({unassignedEmployees.length})</h2>

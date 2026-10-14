@@ -37,4 +37,5 @@ class MilestoneService:
             "description": milestone["description"],
             "startDate": milestone["start_date"],
             "endDate": milestone["end_date"],
+            "completedAt": milestone["completed_at"],
         }

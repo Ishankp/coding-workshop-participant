@@ -28,14 +28,16 @@ INSERT INTO projects (id, title, start_date, end_date, budget, archived_at, comp
   (3, 'Mobile App Launch',        '2026-01-15', '2026-06-30',  4000.00, NULL, '2026-06-28 17:00:00'),
   (4, 'Legacy CRM Integration',   '2025-10-01', '2026-02-28',  9000.00, '2026-03-15 09:00:00', NULL);
 
-INSERT INTO milestones (id, project_id, title, description, start_date, end_date) VALUES
-  (1, 1, 'Discovery & Research', 'User interviews and current-state analysis', '2026-07-01', '2026-08-15'),
-  (2, 1, 'Design System',        'Component library and style guide',          '2026-08-16', '2026-10-15'),
-  (3, 1, 'Build & Launch',       'Implement new portal and release',           '2026-10-16', '2026-12-31'),
-  (4, 2, 'Schema Mapping',       'Map legacy tables to the new warehouse',     '2026-09-01', '2026-11-30'),
-  (5, 2, 'Data Migration',       'Migrate and validate historical data',       '2026-12-01', '2027-03-31'),
-  (6, 3, 'Beta Release',         'Release to internal testers',                '2026-01-15', '2026-04-30'),
-  (7, 3, 'Public Release',       'App store submission and launch',            '2026-05-01', '2026-06-30');
+-- Milestones: Discovery, Beta Release and Public Release are completed; Design System and
+-- Schema Mapping are in progress; Build & Launch and Data Migration haven't started.
+INSERT INTO milestones (id, project_id, title, description, start_date, end_date, completed_at) VALUES
+  (1, 1, 'Discovery & Research', 'User interviews and current-state analysis', '2026-07-01', '2026-08-15', '2026-08-14 16:00:00'),
+  (2, 1, 'Design System',        'Component library and style guide',          '2026-08-16', '2026-10-15', NULL),
+  (3, 1, 'Build & Launch',       'Implement new portal and release',           '2026-10-16', '2026-12-31', NULL),
+  (4, 2, 'Schema Mapping',       'Map legacy tables to the new warehouse',     '2026-09-01', '2026-11-30', NULL),
+  (5, 2, 'Data Migration',       'Migrate and validate historical data',       '2026-12-01', '2027-03-31', NULL),
+  (6, 3, 'Beta Release',         'Release to internal testers',                '2026-01-15', '2026-04-30', '2026-04-28 12:00:00'),
+  (7, 3, 'Public Release',       'App store submission and launch',            '2026-05-01', '2026-06-30', '2026-06-28 17:00:00');
 
 -- Employees: managers first so manager_id references resolve
 INSERT INTO employees (id, user_id, title, salary, manager_id) VALUES

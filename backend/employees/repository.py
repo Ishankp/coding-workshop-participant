@@ -8,7 +8,17 @@ from typing import Callable
 
 from psycopg import Connection
 
+from shared.search import contains_pattern
+
 _LIST_COLUMNS = "e.id AS employee_id, e.title, u.username, u.first_name, u.last_name, u.role"
+
+# An employee matches a search when their full name, username or job title contains the text
+# (The ::text casts let Postgres type the parameter when it's NULL.)
+_EMPLOYEE_MATCHES = (
+    "(%(pattern)s::text IS NULL"
+    " OR concat_ws(' ', u.first_name, u.last_name) ILIKE %(pattern)s::text"
+    " OR u.username ILIKE %(pattern)s::text OR e.title ILIKE %(pattern)s::text)"
+)
 
 
 class EmployeeRepository:
@@ -17,35 +27,39 @@ class EmployeeRepository:
     def __init__(self, get_connection: Callable[[], Connection]) -> None:
         self._get_connection = get_connection
 
-    def find_all_employees(self) -> list[dict]:
-        """Return every employee with their role; may be empty."""
+    def find_all_employees(self, query: str | None = None) -> list[dict]:
+        """Return every employee with their role; may be empty. With query, only matching employees."""
         with self._get_connection().cursor() as cur:
             cur.execute(
                 f"SELECT {_LIST_COLUMNS} FROM employees e "
                 "JOIN users u ON u.id = e.user_id "
-                "ORDER BY u.last_name, u.first_name, e.id"
+                "WHERE " + _EMPLOYEE_MATCHES + " "
+                "ORDER BY u.last_name, u.first_name, e.id",
+                {"pattern": contains_pattern(query) if query else None},
             )
             return cur.fetchall()
 
-    def find_employees_visible_to(self, user_id: int) -> list[dict]:
+    def find_employees_visible_to(self, user_id: int, query: str | None = None) -> list[dict]:
         """
         Return the user's own employee record, everyone in at least one of their
-        projects, and (if they manage anyone) their direct reports.
+        projects, and (if they manage anyone) their direct reports. With query,
+        only those whose name, username or title contain it.
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
                 f"SELECT {_LIST_COLUMNS} FROM employees e "
                 "JOIN users u ON u.id = e.user_id "
-                "WHERE e.user_id = %(user_id)s "
+                "WHERE (e.user_id = %(user_id)s "
                 "   OR e.manager_id = (SELECT id FROM employees WHERE user_id = %(user_id)s) "
                 "   OR EXISTS ("
                 "     SELECT 1 FROM employee_projects ep"
                 "     JOIN employee_projects vp ON vp.project_id = ep.project_id"
                 "     JOIN employees ve ON ve.id = vp.employee_id"
                 "     WHERE ep.employee_id = e.id AND ve.user_id = %(user_id)s"
-                "   ) "
+                "   )) "
+                "  AND " + _EMPLOYEE_MATCHES + " "
                 "ORDER BY u.last_name, u.first_name, e.id",
-                {"user_id": user_id},
+                {"user_id": user_id, "pattern": contains_pattern(query) if query else None},
             )
             return cur.fetchall()
 
@@ -107,6 +121,7 @@ class EmployeeRepository:
             cur.execute(
                 "SELECT p.id AS project_id, p.title AS project_title, p.archived_at, p.completed_at, "
                 "       m.id AS milestone_id, m.title AS milestone_name, m.start_date, m.end_date, "
+                "       m.completed_at AS milestone_completed_at, "
                 "       (SELECT COALESCE(SUM(t.hours), 0) FROM time_entries t"
                 "         WHERE t.employee_id = em.employee_id AND t.milestone_id = em.milestone_id) AS hours_spent "
                 "FROM employee_projects ep "

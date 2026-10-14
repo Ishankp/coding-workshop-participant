@@ -33,18 +33,19 @@ class EmployeeService:
         self._repository = repository
         self._today = today
 
-    def list_employees(self, user: CurrentUser) -> list[dict]:
+    def list_employees(self, user: CurrentUser, query: str | None = None) -> list[dict]:
         """
         Return the employees the user can see: everyone for admins, otherwise
         themselves, the people they share a project with, and their direct reports.
+        With query, only those whose name, username or job title contain it.
 
         Returns:
             list: [{employeeId, name, username, title, role}]
         """
         if user.is_admin:
-            rows = self._repository.find_all_employees()
+            rows = self._repository.find_all_employees(query)
         else:
-            rows = self._repository.find_employees_visible_to(user.id)
+            rows = self._repository.find_employees_visible_to(user.id, query)
         return [
             {
                 "employeeId": row["employee_id"],
@@ -66,7 +67,7 @@ class EmployeeService:
                    manager: {employeeId, name} | None,
                    totalHours,                       # sum over the projects returned
                    projects: [{projectId, title, status, hoursSpent,   # sum over its milestones
-                               milestones: [{milestoneId, name, startDate, endDate, hoursSpent,
+                               milestones: [{milestoneId, name, startDate, endDate, completedAt, hoursSpent,
                                              timeElapsedPercent, daysLeft, status}]}]}
 
         Raises:
@@ -129,7 +130,10 @@ class EmployeeService:
                     "name": row["milestone_name"],
                     "startDate": row["start_date"],
                     "endDate": row["end_date"],
+                    "completedAt": row["milestone_completed_at"],
                     "hoursSpent": row["hours_spent"],
-                    **milestone_timeline(row["start_date"], row["end_date"], today),
+                    **milestone_timeline(
+                        row["start_date"], row["end_date"], today, bool(row["milestone_completed_at"])
+                    ),
                 })
         return list(projects.values())

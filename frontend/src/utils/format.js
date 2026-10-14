@@ -33,6 +33,18 @@ export function projectStatus(project) {
 }
 
 /**
+ * Tone for a project's time-elapsed bar: finished projects aren't "past due".
+ * @param {{archivedAt: string|null, completedAt: string|null, daysLeft: number|null}} project
+ * @returns {'completed'|'archived'|'past_end_date'|'in_progress'}
+ */
+export function projectScheduleTone(project) {
+  if (project.completedAt) return 'completed'
+  if (project.archivedAt) return 'archived'
+  if (project.daysLeft !== null && project.daysLeft < 0) return 'past_end_date'
+  return 'in_progress'
+}
+
+/**
  * Today's date in the browser's local time zone as YYYY-MM-DD (for date inputs).
  * @returns {string}
  */
