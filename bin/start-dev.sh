@@ -327,6 +327,9 @@ else
     echo -e "  Detected Mac/Windows - using host: host.docker.internal"
 fi
 
+# Copy backend/_shared into each Python service before it is deployed
+"$SCRIPT_DIR/sync-shared.sh"
+
 # Install pip requirements into each Python service directory for hot-reload
 # Skip if requirements.txt hasn't changed since last install (avoids slow PyPI lookups)
 shopt -s nullglob
@@ -339,7 +342,10 @@ for req in "$PROJECT_ROOT"/backend/*/requirements.txt; do
         continue
     fi
     echo -e "  Installing pip requirements for $(basename "$svc_dir")..."
-    pip install --quiet --target="$svc_dir" -r "$req" 2>/dev/null || true
+    # Pin wheels to the Lambda runtime (python3.13, x86_64), not the host's pip version
+    pip install --quiet --upgrade --target="$svc_dir" \
+        --platform manylinux2014_x86_64 --implementation cp --python-version 3.13 --only-binary=:all: \
+        -r "$req" 2>/dev/null || true
     echo "$REQS_HASH" > "$HASH_FILE"
 done
 

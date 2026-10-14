@@ -1,0 +1,8 @@
+# start-dev.sh pip-installs dependencies into this folder and bin/sync-shared.sh
+# copies backend/_shared here as shared/; track only this service's own files
+*
+!.gitignore
+!*.py
+!requirements.txt
+!*.md
+!tests/

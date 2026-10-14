@@ -95,6 +95,9 @@ else
     terraform init -reconfigure
 fi
 
+# Copy backend/_shared into each Python service so it is packaged with it
+$SCRIPT_DIR/sync-shared.sh
+
 # Apply Terraform configuration automatically
 terraform apply -auto-approve
 echo "INFO: Infrastructure deployment complete!"

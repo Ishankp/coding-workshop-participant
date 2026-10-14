@@ -1,34 +1,41 @@
-import { useState } from 'react'
-import reactLogo from '/react.svg'
-import viteLogo from '/vite.svg'
+import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import Layout from './components/Layout'
+import RequireAuth from './components/RequireAuth'
+import LoginPage from './pages/LoginPage'
+import ProjectsPage from './pages/ProjectsPage'
+import ProjectDetailPage from './pages/ProjectDetailPage'
+import MilestonePage from './pages/MilestonePage'
+import EmployeePage from './pages/EmployeePage'
+import PeoplePage from './pages/PeoplePage'
+import TimeLogPage from './pages/TimeLogPage'
+import NotFoundPage from './pages/NotFoundPage'
 import './App.css'
 
+/**
+ * Routes: /login is public; everything else requires a session.
+ */
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          element={
+            <RequireAuth>
+              <Layout />
+            </RequireAuth>
+          }
+        >
+          <Route index element={<ProjectsPage />} />
+          <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+          <Route path="milestones/:milestoneId" element={<MilestonePage />} />
+          <Route path="employees" element={<PeoplePage />} />
+          <Route path="employees/:employeeId" element={<EmployeePage />} />
+          <Route path="employees/:employeeId/time-log" element={<TimeLogPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   )
 }
 
