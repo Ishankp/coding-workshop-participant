@@ -24,7 +24,7 @@ jobs:
         run: pip3 install bandit
 
       - name: Run Bandit
-        run: bandit -r ./backend
+        run: bandit -r ./backend -c bandit.yaml
 
   pytest:
     runs-on: ubuntu-latest

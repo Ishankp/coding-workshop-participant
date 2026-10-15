@@ -16,7 +16,7 @@ from .http_utils import Request
 
 TOKEN_TTL = timedelta(hours=1)
 _ALGORITHM = "HS256"
-_DEV_SECRET = "local-dev-secret-change-me"
+_DEV_SECRET = "local-dev-secret-change-me"  # nosec B105 - local-development fallback only; deployments must set JWT_SECRET
 
 
 def _secret() -> str:

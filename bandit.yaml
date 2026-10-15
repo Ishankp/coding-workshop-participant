@@ -1,0 +1,9 @@
+# Bandit (Python static security scan) settings, used by
+# .github/workflows/python.actions.yml: bandit -r ./backend -c bandit.yaml
+#
+# Test directories are left out: pytest tests use assert by design (B101) and
+# their fixtures hold the seed password and fake hashes (B105/B106).
+# Findings in application code are reviewed individually; known false
+# positives carry an inline "# nosec <rule> - reason" comment.
+exclude_dirs:
+  - tests

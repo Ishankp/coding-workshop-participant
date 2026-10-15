@@ -218,10 +218,13 @@ database). Start the app first, with the seed data loaded (section 3):
   "npm run lint" currently fails to start because two ESLint plugins named in
   eslint.config.js are not installed; it is not part of the build.
 
-CI (.github/workflows): the Python workflow runs bandit and
+CI (.github/workflows): the Python workflow runs bandit (settings in
+bandit.yaml: test folders are skipped, and the few false positives in
+application code carry a "# nosec" comment with the reason) and
 ./bin/test-backend.sh; the React workflow runs npm audit, the unit tests with
-the coverage floor, and the build. The E2E tests are not in CI because they
-need PostgreSQL, LocalStack and the seed data.
+the coverage floor, and the build; the Terraform workflow runs Checkov in
+soft-fail mode. The E2E and repository tests are not in CI because they need
+PostgreSQL and the seed data.
 
 Manual API check (after ./bin/start-dev.sh):
 

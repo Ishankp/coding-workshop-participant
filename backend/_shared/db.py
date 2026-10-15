@@ -39,6 +39,6 @@ def reset_connection() -> None:
     if _CONN is not None:
         try:
             _CONN.close()
-        except Exception:  # pylint: disable=broad-except
+        except Exception:  # pylint: disable=broad-except  # nosec B110 - best-effort close of a dead connection
             pass
     _CONN = None

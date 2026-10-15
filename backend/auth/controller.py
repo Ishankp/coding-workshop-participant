@@ -30,7 +30,7 @@ class AuthController:
         elif len(username.strip()) > _MAX_USERNAME_LENGTH:
             fields["username"] = f"Must be at most {_MAX_USERNAME_LENGTH} characters"
         if not isinstance(password, str) or not password:
-            fields["password"] = "Password is required"
+            fields["password"] = "Password is required"  # nosec B105 - validation message, not a secret
         elif len(password.encode()) > _MAX_PASSWORD_BYTES:
             fields["password"] = f"Must be at most {_MAX_PASSWORD_BYTES} bytes"
         if fields:

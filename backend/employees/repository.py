@@ -31,7 +31,7 @@ class EmployeeRepository:
         """Return every employee with their role; may be empty. With query, only matching employees."""
         with self._get_connection().cursor() as cur:
             cur.execute(
-                f"SELECT {_LIST_COLUMNS} FROM employees e "
+                f"SELECT {_LIST_COLUMNS} FROM employees e "  # nosec B608 - query text is built from module constants; values are bound as parameters
                 "JOIN users u ON u.id = e.user_id "
                 "WHERE u.deactivated_at IS NULL AND " + _EMPLOYEE_MATCHES + " "
                 "ORDER BY u.last_name, u.first_name, e.id",
@@ -47,7 +47,7 @@ class EmployeeRepository:
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
-                f"SELECT {_LIST_COLUMNS} FROM employees e "
+                f"SELECT {_LIST_COLUMNS} FROM employees e "  # nosec B608 - query text is built from module constants; values are bound as parameters
                 "JOIN users u ON u.id = e.user_id "
                 "WHERE u.deactivated_at IS NULL AND (e.user_id = %(user_id)s "
                 "   OR e.manager_id = (SELECT id FROM employees WHERE user_id = %(user_id)s) "

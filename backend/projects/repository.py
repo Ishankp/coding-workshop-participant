@@ -46,7 +46,7 @@ class ProjectRepository:
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
-                f"SELECT {_LIST_COLUMNS} FROM projects p "
+                f"SELECT {_LIST_COLUMNS} FROM projects p "  # nosec B608 - query text is built from module constants; values are bound as parameters
                 "JOIN employee_projects ep ON ep.project_id = p.id "
                 "JOIN employees e ON e.id = ep.employee_id "
                 "WHERE e.user_id = %(user_id)s AND " + _PROJECT_MATCHES + " "
@@ -106,7 +106,7 @@ class ProjectRepository:
         """Return every project with its dates and status timestamps; may be empty. With query, only matches."""
         with self._get_connection().cursor() as cur:
             cur.execute(
-                f"SELECT {_LIST_COLUMNS} FROM projects p WHERE " + _PROJECT_MATCHES + " ORDER BY p.title",
+                f"SELECT {_LIST_COLUMNS} FROM projects p WHERE " + _PROJECT_MATCHES + " ORDER BY p.title",  # nosec B608 - query text is built from module constants; values are bound as parameters
                 {"pattern": contains_pattern(query) if query else None},
             )
             return cur.fetchall()
@@ -275,7 +275,7 @@ class ProjectRepository:
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT e.id AS employee_id, e.title, u.username, u.first_name, u.last_name, u.role "
+                "SELECT e.id AS employee_id, e.title, u.username, u.first_name, u.last_name, u.role "  # nosec B608 - query text is built from module constants; values are bound as parameters
                 "FROM employees e JOIN users u ON u.id = e.user_id "
                 "WHERE u.deactivated_at IS NULL "
                 "  AND NOT EXISTS (SELECT 1 FROM employee_projects ep"
@@ -293,7 +293,7 @@ class ProjectRepository:
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT EXISTS (SELECT 1 FROM employees e WHERE e.id = %(employee_id)s AND " + _IN_POOL_OF_USER + ") AS ok",
+                "SELECT EXISTS (SELECT 1 FROM employees e WHERE e.id = %(employee_id)s AND " + _IN_POOL_OF_USER + ") AS ok",  # nosec B608 - query text is built from module constants; values are bound as parameters
                 {"employee_id": employee_id, "user_id": user_id},
             )
             return cur.fetchone()["ok"]
