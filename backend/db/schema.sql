@@ -63,6 +63,16 @@ CREATE TABLE employee_milestones (
   PRIMARY KEY (employee_id, milestone_id)    -- an employee can't be assigned to the same milestone twice
 );
 
+-- "milestone_id depends on depends_on_milestone_id": the prerequisite should finish first.
+-- Both milestones must belong to the same project; the backend also refuses loops and
+-- a dependent milestone that starts before its prerequisite.
+CREATE TABLE milestone_dependencies (
+  milestone_id            INTEGER NOT NULL,
+  depends_on_milestone_id INTEGER NOT NULL,
+  PRIMARY KEY (milestone_id, depends_on_milestone_id),
+  CONSTRAINT milestone_dependencies_not_self_chk CHECK (milestone_id <> depends_on_milestone_id)
+);
+
 -- One row per day an employee logs hours on a milestone they're assigned to.
 -- created_by_user_id records who entered it: the employee themselves, or a manager/admin on their behalf.
 CREATE TABLE time_entries (
@@ -113,6 +123,16 @@ ADD CONSTRAINT milestones_project_id_fk
 FOREIGN KEY (project_id) REFERENCES projects (id)
 ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
 
+ALTER TABLE milestone_dependencies
+ADD CONSTRAINT milestone_dependencies_milestone_id_fk
+FOREIGN KEY (milestone_id) REFERENCES milestones (id)
+ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
+
+ALTER TABLE milestone_dependencies
+ADD CONSTRAINT milestone_dependencies_depends_on_fk
+FOREIGN KEY (depends_on_milestone_id) REFERENCES milestones (id)
+ON DELETE CASCADE DEFERRABLE INITIALLY IMMEDIATE;
+
 -- Hours can only be logged against an existing milestone assignment
 ALTER TABLE time_entries
 ADD CONSTRAINT time_entries_assignment_fk
@@ -124,6 +144,53 @@ ADD CONSTRAINT time_entries_created_by_user_id_fk
 FOREIGN KEY (created_by_user_id) REFERENCES users (id)
 ON DELETE SET NULL DEFERRABLE INITIALLY IMMEDIATE;
 
+-- Milestones must fall within their project's dates (when the project has them), so a
+-- milestone can't be created or moved outside its project by mistake.
+CREATE OR REPLACE FUNCTION check_milestone_within_project() RETURNS trigger AS $$
+DECLARE
+  p projects%ROWTYPE;
+BEGIN
+  SELECT * INTO p FROM projects WHERE id = NEW.project_id;
+  IF p.start_date IS NOT NULL AND (
+       (NEW.start_date IS NOT NULL AND NEW.start_date < p.start_date) OR
+       (NEW.end_date   IS NOT NULL AND NEW.end_date   < p.start_date)) THEN
+    RAISE EXCEPTION 'milestone "%" starts before its project (project starts %)', NEW.title, p.start_date
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF p.end_date IS NOT NULL AND (
+       (NEW.end_date   IS NOT NULL AND NEW.end_date   > p.end_date) OR
+       (NEW.start_date IS NOT NULL AND NEW.start_date > p.end_date)) THEN
+    RAISE EXCEPTION 'milestone "%" ends after its project (project ends %)', NEW.title, p.end_date
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER milestones_within_project_trg
+BEFORE INSERT OR UPDATE OF project_id, start_date, end_date ON milestones
+FOR EACH ROW EXECUTE FUNCTION check_milestone_within_project();
+
+-- The other direction: a project's dates can't be narrowed past its existing milestones.
+CREATE OR REPLACE FUNCTION check_project_contains_milestones() RETURNS trigger AS $$
+DECLARE
+  m milestones%ROWTYPE;
+BEGIN
+  SELECT * INTO m FROM milestones
+   WHERE project_id = NEW.id
+     AND ((NEW.start_date IS NOT NULL AND (start_date < NEW.start_date OR end_date < NEW.start_date))
+       OR (NEW.end_date   IS NOT NULL AND (end_date   > NEW.end_date   OR start_date > NEW.end_date)))
+   LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'project dates would leave milestone "%" (% to %) outside the project',
+      m.title, m.start_date, m.end_date USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$ LANGUAGE plpgsql;
+
+CREATE TRIGGER projects_contain_milestones_trg
+BEFORE UPDATE OF start_date, end_date ON projects
+FOR EACH ROW EXECUTE FUNCTION check_project_contains_milestones();
+
 -- PostgreSQL does not index foreign key columns automatically.
 -- Composite primary keys already cover lookups by their first column
 -- (employee_projects.employee_id, employee_milestones.employee_id).
@@ -131,6 +198,7 @@ CREATE INDEX employees_manager_id_idx             ON employees (manager_id);
 CREATE INDEX employee_projects_project_id_idx     ON employee_projects (project_id);
 CREATE INDEX employee_milestones_milestone_id_idx ON employee_milestones (milestone_id);
 CREATE INDEX milestones_project_id_idx            ON milestones (project_id);
+CREATE INDEX milestone_dependencies_depends_on_idx ON milestone_dependencies (depends_on_milestone_id);
 CREATE INDEX time_entries_assignment_idx         ON time_entries (employee_id, milestone_id);
 CREATE INDEX time_entries_milestone_id_idx       ON time_entries (milestone_id);
 CREATE INDEX time_entries_employee_date_idx      ON time_entries (employee_id, work_date DESC);

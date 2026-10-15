@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
@@ -8,6 +8,9 @@ import EmployeeChips from '../components/EmployeeChips'
 import MilestoneList from '../components/MilestoneList'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
 import CompletionBar from '../components/CompletionBar'
+import DependencyList from '../components/DependencyList'
+import NewMilestoneForm from '../components/NewMilestoneForm'
+import TeamManager from '../components/TeamManager'
 import { formatCurrency, formatDate, projectStatus } from '../utils/format'
 import { daysLeftText } from '../utils/milestones'
 
@@ -30,11 +33,12 @@ export default function ProjectDetailPage() {
     [projectId, canSeeBudget],
   )
   const { data, error, loading, reload } = useApiData(loadProject)
+  const [addingMilestone, setAddingMilestone] = useState(false)
 
   if (loading) return <Loading label="Loading project…" />
   if (error) return <ErrorMessage error={error} onRetry={reload} />
 
-  const [project, { milestones, unassignedEmployees }, budget] = data
+  const [project, { milestones, unassignedEmployees, dependencies }, budget] = data
   const status = projectStatus(project)
 
   return (
@@ -94,21 +98,61 @@ export default function ProjectDetailPage() {
 
       {budget && <BudgetCard budget={budget} />}
 
-      <h2 className="section-title">Milestones ({milestones.length})</h2>
+      <div className="section-heading">
+        <h2 className="section-title">Milestones ({milestones.length})</h2>
+        {canSeeBudget && !addingMilestone && (
+          <button type="button" className="icon-button" onClick={() => setAddingMilestone(true)} aria-label="Add a milestone" title="Add a milestone">
+            +
+          </button>
+        )}
+      </div>
       <p className="muted section-hint">
         Grouped by state; within a group, milestones closest to their end date are on top. Click a heading to
         collapse or expand it.
       </p>
+      {addingMilestone && (
+        <NewMilestoneForm
+          project={project}
+          onCreated={() => {
+            setAddingMilestone(false)
+            reload()
+          }}
+          onCancel={() => setAddingMilestone(false)}
+        />
+      )}
       <MilestoneList milestones={milestones} />
 
-      <h2 className="section-title">Not assigned to a milestone ({unassignedEmployees.length})</h2>
-      {unassignedEmployees.length === 0 ? (
-        <p className="muted">Every project member is working on at least one milestone.</p>
+      {canSeeBudget ? (
+        <>
+          <h2 className="section-title">Team</h2>
+          <p className="muted section-hint">
+            Add people to the project and assign them to milestones. Assigning a milestone lets them log hours on it.
+          </p>
+          <TeamManager projectId={projectId} milestones={milestones} onChanged={async () => reload()} />
+        </>
       ) : (
-        <div className="card">
-          <EmployeeChips employees={unassignedEmployees} label="Project members without a milestone" />
-        </div>
+        <>
+          <h2 className="section-title">Not assigned to a milestone ({unassignedEmployees.length})</h2>
+          {unassignedEmployees.length === 0 ? (
+            <p className="muted">Every project member is working on at least one milestone.</p>
+          ) : (
+            <div className="card">
+              <EmployeeChips employees={unassignedEmployees} label="Project members without a milestone" />
+            </div>
+          )}
+        </>
       )}
+
+      <h2 className="section-title">Dependencies ({dependencies.length})</h2>
+      <p className="muted section-hint">
+        Which milestones wait on others. A warning shows when a prerequisite is past its end date and not complete.
+      </p>
+      <DependencyList
+        milestones={milestones}
+        dependencies={dependencies}
+        canEdit={canSeeBudget}
+        onChanged={async () => reload()}
+      />
     </>
   )
 }

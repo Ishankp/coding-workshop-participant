@@ -52,7 +52,10 @@ export function getProjectMembers(projectId) {
  * @returns {Promise<{milestones: Array<{milestoneId: number, name: string, startDate: string|null,
  *   endDate: string|null, completedAt: string|null, timeElapsedPercent: number|null, daysLeft: number|null,
  *   status: 'completed'|'not_started'|'in_progress'|'past_end_date'|'unscheduled',
- *   employees: Array<{employeeId: number, name: string, username: string}>}>,
+ *   employees: Array<{employeeId: number, name: string, username: string}>,
+ *   dependsOn: Array<{milestoneId: number, name: string, completed: boolean}>, alerts: string[]}>,
+ *   dependencies: Array<{milestoneId: number, milestoneName: string, dependsOnMilestoneId: number,
+ *     dependsOnName: string, dependsOnEndDate: string|null, dependsOnCompleted: boolean, alert: string|null}>,
  *   unassignedEmployees: Array<{employeeId: number, name: string, username: string}>}>}
  */
 export function getProjectMilestones(projectId) {
@@ -70,4 +73,94 @@ export function getProjectMilestones(projectId) {
  */
 export function getProjectBudget(projectId) {
   return apiRequest(`${BASE}/${encodeURIComponent(projectId)}/budget`)
+}
+
+/**
+ * Create a project (managers and admins; a creating manager becomes a member). POST /api/projects
+ * @param {{title: string, startDate?: string, endDate?: string, budget?: number}} data
+ * @returns {Promise<{projectId: number, title: string, startDate: string|null, endDate: string|null,
+ *   budget: number|null, archivedAt: string|null, completedAt: string|null}>}
+ */
+export function createProject(data) {
+  return apiRequest(BASE, { method: 'POST', body: data })
+}
+
+/**
+ * Add a milestone to a project (managers who are members, and admins). Dates must fit inside the project.
+ * POST /api/projects/{projectId}/milestones
+ * @param {number|string} projectId
+ * @param {{title: string, description?: string, startDate?: string, endDate?: string}} data
+ * @returns {Promise<{milestoneId: number, projectId: number, name: string, description: string|null,
+ *   startDate: string|null, endDate: string|null, completedAt: string|null}>}
+ */
+export function createMilestone(projectId, data) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}/milestones`, { method: 'POST', body: data })
+}
+
+/**
+ * @typedef {{employeeId: number, name: string, username: string, title: string|null, role: string}} Person
+ */
+
+/**
+ * The project's members with their milestones, and everyone who could be added
+ * (managers who are members, and admins). GET /api/projects/{projectId}/team
+ * @param {number|string} projectId
+ * @returns {Promise<{members: Array<Person & {hoursLogged: number, milestones: Array<{milestoneId: number, name: string}>}>,
+ *   candidates: Person[]}>}
+ */
+export function getProjectTeam(projectId) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}/team`)
+}
+
+/**
+ * Add someone to the project without a milestone. POST /api/projects/{projectId}/members
+ * @param {number|string} projectId
+ * @param {number} employeeId
+ * @returns {Promise<Person & {projectId: number}>}
+ */
+export function addProjectMember(projectId, employeeId) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}/members`, { method: 'POST', body: { employeeId } })
+}
+
+/**
+ * Remove someone from the project (refused with 409 while they have hours logged on it).
+ * DELETE /api/projects/{projectId}/members/{employeeId}
+ * @param {number|string} projectId
+ * @param {number} employeeId
+ * @returns {Promise<null>}
+ */
+export function removeProjectMember(projectId, employeeId) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}/members/${encodeURIComponent(employeeId)}`, {
+    method: 'DELETE',
+  })
+}
+
+/**
+ * Assign someone to a milestone, adding them to the project if needed.
+ * POST /api/projects/{projectId}/milestones/{milestoneId}/assignees
+ * @param {number|string} projectId
+ * @param {number} milestoneId
+ * @param {number} employeeId
+ * @returns {Promise<{employeeId: number, name: string, milestoneId: number, milestoneName: string, addedToProject: boolean}>}
+ */
+export function assignMilestone(projectId, milestoneId, employeeId) {
+  return apiRequest(
+    `${BASE}/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/assignees`,
+    { method: 'POST', body: { employeeId } },
+  )
+}
+
+/**
+ * Unassign someone from a milestone (refused with 409 while they have hours logged on it).
+ * DELETE /api/projects/{projectId}/milestones/{milestoneId}/assignees/{employeeId}
+ * @param {number|string} projectId
+ * @param {number} milestoneId
+ * @param {number} employeeId
+ * @returns {Promise<null>}
+ */
+export function unassignMilestone(projectId, milestoneId, employeeId) {
+  return apiRequest(
+    `${BASE}/${encodeURIComponent(projectId)}/milestones/${encodeURIComponent(milestoneId)}/assignees/${encodeURIComponent(employeeId)}`,
+    { method: 'DELETE' },
+  )
 }

@@ -39,6 +39,13 @@ INSERT INTO milestones (id, project_id, title, description, start_date, end_date
   (6, 3, 'Beta Release',         'Release to internal testers',                '2026-01-15', '2026-04-30', '2026-04-28 12:00:00'),
   (7, 3, 'Public Release',       'App store submission and launch',            '2026-05-01', '2026-06-30', '2026-06-28 17:00:00');
 
+-- Dependencies: each project's milestones run in sequence
+INSERT INTO milestone_dependencies (milestone_id, depends_on_milestone_id) VALUES
+  (2, 1),  -- Design System  depends on Discovery & Research  (project 1)
+  (3, 2),  -- Build & Launch depends on Design System         (project 1)
+  (5, 4),  -- Data Migration depends on Schema Mapping        (project 2)
+  (7, 6);  -- Public Release depends on Beta Release          (project 3)
+
 -- Employees: managers first so manager_id references resolve
 INSERT INTO employees (id, user_id, title, salary, manager_id) VALUES
   (1, 2, 'Engineering Manager',  145000.00, NULL),

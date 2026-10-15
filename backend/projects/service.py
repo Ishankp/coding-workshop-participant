@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Callable
 
 from repository import ProjectRepository
+from shared.dependencies import dependency_view
 from shared.errors import ForbiddenError, NotFoundError
 from shared.timeline import elapsed_fraction, full_name, milestone_timeline
 from shared.tokens import CurrentUser
@@ -112,8 +113,8 @@ class ProjectService:
 
     def get_project_milestones(self, user: CurrentUser, project_id: int) -> dict:
         """
-        Return the project's milestones with their schedule and assigned employees,
-        plus the project members who aren't assigned to any of its milestones.
+        Return the project's milestones with their schedule, assigned employees and
+        dependencies, plus the project members who aren't assigned to any of its milestones.
 
         Milestones are sorted by time elapsed, highest first (closest to or past
         their end date on top); ties go to the earlier end date. Milestones
@@ -122,7 +123,11 @@ class ProjectService:
         Returns:
             dict: {
                 "milestones": [{milestoneId, name, startDate, endDate, completedAt, timeElapsedPercent,
-                                daysLeft, status, employees: [{employeeId, name, username}]}],
+                                daysLeft, status, employees: [{employeeId, name, username}],
+                                dependsOn: [{milestoneId, name, completed}],
+                                alerts: [str]}],          # prerequisites past due and not complete
+                "dependencies": [{milestoneId, milestoneName, dependsOnMilestoneId, dependsOnName,
+                                  dependsOnEndDate, dependsOnCompleted, alert}],
                 "unassignedEmployees": [{employeeId, name, username}],
             }
 
@@ -145,9 +150,24 @@ class ProjectService:
                     "completedAt": row["completed_at"],
                     **milestone_timeline(row["start_date"], row["end_date"], today, bool(row["completed_at"])),
                     "employees": [],
+                    "dependsOn": [],
+                    "alerts": [],
                 }
             if row["employee_id"] is not None:
                 milestone["employees"].append(_employee(row))
+
+        dependencies = [dependency_view(r, today) for r in self._repository.find_project_dependencies(project_id)]
+        for dep in dependencies:
+            dependent = milestones.get(dep["milestoneId"])
+            if dependent is None:
+                continue
+            dependent["dependsOn"].append({
+                "milestoneId": dep["dependsOnMilestoneId"],
+                "name": dep["dependsOnName"],
+                "completed": dep["dependsOnCompleted"],
+            })
+            if dep["alert"]:
+                dependent["alerts"].append(dep["alert"])
 
         def sort_key(m: dict) -> tuple:
             percent = m["timeElapsedPercent"]
@@ -155,6 +175,7 @@ class ProjectService:
 
         return {
             "milestones": sorted(milestones.values(), key=sort_key),
+            "dependencies": dependencies,
             "unassignedEmployees": [
                 _employee(row) for row in self._repository.find_members_without_milestones(project_id)
             ],

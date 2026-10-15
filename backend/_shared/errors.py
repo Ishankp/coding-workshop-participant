@@ -53,6 +53,13 @@ class NotFoundError(AppError):
     code = "not_found"
 
 
+class ConflictError(AppError):
+    """Request is valid but clashes with current state (duplicate, or something still depends on it)."""
+
+    status = 409
+    code = "conflict"
+
+
 class MethodNotAllowedError(AppError):
     """Route exists but not for this HTTP method."""
 

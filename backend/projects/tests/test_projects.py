@@ -46,6 +46,20 @@ MEMBER_ROWS = [
 TODAY = date(2026, 10, 14)
 
 
+def dependency_row(mid, mname, mstart, did, dname, dstart, dend, dcompleted=None):
+    return {"milestone_id": mid, "milestone_name": mname, "milestone_start_date": mstart,
+            "depends_on_milestone_id": did, "depends_on_name": dname, "depends_on_start_date": dstart,
+            "depends_on_end_date": dend, "depends_on_completed_at": dcompleted}
+
+
+# Halfway depends on Overdue (ended Oct 1, not complete -> alert); Upcoming depends on Finished (complete)
+DEPENDENCY_ROWS = [
+    dependency_row(1, "Halfway", date(2026, 10, 4), 3, "Overdue", date(2026, 9, 1), date(2026, 10, 1)),
+    dependency_row(2, "Upcoming", date(2026, 11, 1), 6, "Finished", date(2026, 8, 1), date(2026, 9, 1),
+                   datetime(2026, 8, 30, 12)),
+]
+
+
 def project_milestone(mid, project_id, title, start, end, completed_at=None):
     return {"id": mid, "project_id": project_id, "title": title, "start_date": start, "end_date": end,
             "completed_at": completed_at}
@@ -107,6 +121,10 @@ class FakeProjectRepository:
     def find_members_with_milestones(self, project_id):
         self.calls.append("find_members_with_milestones")
         return [dict(r) for r in MEMBER_ROWS] if project_id == 1 else []
+
+    def find_project_dependencies(self, project_id):
+        self.calls.append("find_project_dependencies")
+        return [dict(r) for r in DEPENDENCY_ROWS] if project_id == 1 else []
 
     def find_milestones_for_projects(self, project_ids):
         self.calls.append(("find_milestones_for_projects", tuple(project_ids)))
@@ -549,3 +567,22 @@ def test_search_query_too_long_is_400(handler):
     response = handler(ev)
     assert response["statusCode"] == 400
     assert "q" in json.loads(response["body"])["error"]["fields"]
+
+
+# Dependencies between milestones
+
+def test_project_milestones_list_dependencies_with_alerts(service):
+    result = service.get_project_milestones(MEMBER, 1)
+    assert [(d["milestoneName"], d["dependsOnName"], d["dependsOnCompleted"]) for d in result["dependencies"]] == [
+        ("Halfway", "Overdue", False), ("Upcoming", "Finished", True),
+    ]
+    assert result["dependencies"][0]["alert"] == "Overdue is 13 days past its end date and not complete"
+    assert result["dependencies"][1]["alert"] is None
+
+
+def test_dependency_alerts_are_attached_to_the_dependent_milestone(service):
+    by_name = {m["name"]: m for m in service.get_project_milestones(MEMBER, 1)["milestones"]}
+    assert by_name["Halfway"]["dependsOn"] == [{"milestoneId": 3, "name": "Overdue", "completed": False}]
+    assert by_name["Halfway"]["alerts"] == ["Overdue is 13 days past its end date and not complete"]
+    assert by_name["Upcoming"]["dependsOn"][0]["completed"] is True and by_name["Upcoming"]["alerts"] == []
+    assert by_name["Overdue"]["dependsOn"] == [] and by_name["Overdue"]["alerts"] == []

@@ -803,3 +803,349 @@ select[aria-invalid='true'] {
 .schedule-note {
   margin: 0;
 }
+
+/* Milestone dependencies */
+
+.dependencies {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.dependency-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.dependency {
+  padding: 0.75rem 1rem;
+}
+
+.dependency.has-alert {
+  border-color: var(--danger);
+}
+
+.dependency-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.dependency-remove {
+  margin-left: auto;
+}
+
+.dependency-alert {
+  margin: 0.5rem 0 0;
+  color: var(--danger);
+  font-size: 0.9rem;
+}
+
+.dependency-form h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.dependency-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.dependency-form-row select {
+  width: auto;
+  min-width: 12rem;
+  flex: 1;
+}
+
+.dependency-form .small {
+  margin: 0.75rem 0 0;
+}
+
+.dependency-detail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.dependency-detail h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.dependency-detail li {
+  margin-bottom: 0.4rem;
+}
+
+/* Dependency flow diagram */
+
+.dependency-graph-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow: hidden;
+}
+
+.dependency-graph-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.dependency-graph {
+  position: relative;
+}
+
+.dependency-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  color: var(--muted);
+}
+
+.dependency-edge {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.dependency-edge.is-complete {
+  color: var(--success);
+}
+
+.dependency-edge.has-alert {
+  color: var(--danger);
+  stroke-dasharray: 6 4;
+}
+
+.dependency-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border: 2px solid var(--border);
+  border-left-width: 6px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.dependency-node:hover {
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+}
+
+.dependency-node-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.dependency-node-state {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.node-completed {
+  border-left-color: var(--success);
+}
+
+.node-completed .dependency-node-state {
+  color: var(--success);
+}
+
+.node-in_progress {
+  border-left-color: var(--primary);
+}
+
+.node-in_progress .dependency-node-state {
+  color: var(--primary);
+}
+
+.node-not_started,
+.node-unscheduled {
+  border-left-color: var(--border);
+}
+
+.node-past_end_date,
+.dependency-node.has-alert {
+  border-color: var(--danger);
+  border-left-color: var(--danger);
+}
+
+.node-past_end_date .dependency-node-state,
+.dependency-node.has-alert .dependency-node-state {
+  color: var(--danger);
+}
+
+.dependency-key {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.key-swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-left: 0.6rem;
+  border-radius: 2px;
+}
+
+.key-complete {
+  background: var(--success);
+}
+
+.key-progress {
+  background: var(--primary);
+}
+
+.key-waiting {
+  background: var(--border);
+}
+
+.key-alert {
+  background: var(--danger);
+}
+
+.dependency-alerts {
+  margin: 0;
+}
+
+.dependency-alerts .dependency-alert {
+  margin: 0.25rem 0;
+}
+
+/* Team management */
+
+.team-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--success);
+  font-size: 0.9rem;
+}
+
+.team-table td {
+  vertical-align: top;
+}
+
+.team-table .chip-list {
+  align-items: center;
+}
+
+.chip-removable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding-right: 0.3rem;
+}
+
+.chip-x {
+  padding: 0 0.3rem;
+  line-height: 1;
+  font-size: 1rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.chip-x:hover:not(:disabled) {
+  color: var(--danger);
+  background: none;
+}
+
+.assign-select {
+  width: auto;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.team-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.team-add select {
+  flex: 1;
+  min-width: 14rem;
+  width: auto;
+}
+
+.team-add .small {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* Milestone work log */
+
+.work-log-totals {
+  margin: 0 0 0.75rem;
+}
+
+.work-log-totals .chip {
+  color: var(--text);
+}
+
+.chip-hours {
+  margin-left: 0.3rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Creating projects and milestones */
+
+.form-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.section-heading .section-title {
+  margin-bottom: 0.75rem;
+}
+
+.icon-button {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  margin-top: 1.1rem;
+  border-radius: 50%;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.page-title .button-link {
+  margin-left: auto;
+}

@@ -39,6 +39,10 @@ const milestoneShape = PropTypes.shape({
   timeElapsedPercent: PropTypes.number,
   daysLeft: PropTypes.number,
   status: PropTypes.string.isRequired,
+  dependsOn: PropTypes.arrayOf(
+    PropTypes.shape({ milestoneId: PropTypes.number.isRequired, name: PropTypes.string.isRequired }),
+  ),
+  alerts: PropTypes.arrayOf(PropTypes.string),
   employees: PropTypes.arrayOf(
     PropTypes.shape({
       employeeId: PropTypes.number.isRequired,
@@ -59,10 +63,23 @@ function MilestoneCard({ milestone }) {
         <h3>
           <Link to={`/milestones/${milestone.milestoneId}`}>{milestone.name}</Link>
         </h3>
-        <span className={`status-badge milestone-status-${milestone.status}`}>
-          {MILESTONE_STATUS_LABELS[milestone.status] ?? milestone.status}
+        <span className="milestone-meta">
+          {milestone.alerts?.length > 0 && (
+            <span className="status-badge milestone-status-past_end_date" title={milestone.alerts.join('; ')}>
+              ⚠ Held up
+            </span>
+          )}
+          <span className={`status-badge milestone-status-${milestone.status}`}>
+            {MILESTONE_STATUS_LABELS[milestone.status] ?? milestone.status}
+          </span>
         </span>
       </div>
+
+      {milestone.alerts?.map((alert) => (
+        <p key={alert} className="dependency-alert" role="alert">
+          ⚠ {alert}
+        </p>
+      ))}
 
       <div className="milestone-schedule">
         <span>
