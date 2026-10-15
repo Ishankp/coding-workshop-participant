@@ -66,8 +66,10 @@ export default function TimeEntryForm({ assignments, onSubmit, entry = null, onC
       // When adding, keep the milestone and date so several entries in a row are quick to add
       if (!entry) setForm((prev) => ({ ...prev, hours: '', note: '' }))
     } catch (err) {
-      setFieldErrors(err.fields ?? {})
-      setFormError(err.fields ? '' : err.message)
+      // Field errors go next to their fields; anything else (e.g. a 409 conflict) goes in the banner
+      const fieldErrs = err.fields ?? {}
+      setFieldErrors(fieldErrs)
+      setFormError(Object.keys(fieldErrs).length ? '' : err.message)
     } finally {
       setSubmitting(false)
     }

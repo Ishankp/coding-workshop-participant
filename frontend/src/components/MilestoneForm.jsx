@@ -65,8 +65,10 @@ export default function MilestoneForm({ project, milestone = null, onSaved, onCa
         : await createMilestone(project.projectId, data)
       onSaved(saved)
     } catch (err) {
-      setFieldErrors(err.fields ?? {})
-      setFormError(err.fields ? '' : err.message)
+      // Field errors go next to their fields; anything else (e.g. a 409 conflict) goes in the banner
+      const fieldErrs = err.fields ?? {}
+      setFieldErrors(fieldErrs)
+      setFormError(Object.keys(fieldErrs).length ? '' : err.message)
       setSubmitting(false)
     }
   }

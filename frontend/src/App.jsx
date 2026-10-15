@@ -8,6 +8,7 @@ import MilestonePage from './pages/MilestonePage'
 import EmployeePage from './pages/EmployeePage'
 import PeoplePage from './pages/PeoplePage'
 import TimeLogPage from './pages/TimeLogPage'
+import UsersPage from './pages/UsersPage'
 import NotFoundPage from './pages/NotFoundPage'
 import './App.css'
 
@@ -32,6 +33,7 @@ function App() {
           <Route path="employees" element={<PeoplePage />} />
           <Route path="employees/:employeeId" element={<EmployeePage />} />
           <Route path="employees/:employeeId/time-log" element={<TimeLogPage />} />
+          <Route path="users" element={<UsersPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

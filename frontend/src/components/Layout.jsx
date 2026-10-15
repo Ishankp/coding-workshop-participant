@@ -29,6 +29,11 @@ export default function Layout() {
                 My time
               </NavLink>
             )}
+            {user.role === 'admin' && (
+              <NavLink to="/users" end className="nav-link">
+                Accounts
+              </NavLink>
+            )}
           </nav>
         </div>
         <div className="topbar-user">

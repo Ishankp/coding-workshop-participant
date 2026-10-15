@@ -1183,3 +1183,7 @@ select[aria-invalid='true'] {
   display: inline-flex;
   gap: 0.4rem;
 }
+
+.field-hint {
+  margin: 0.3rem 0 0;
+}

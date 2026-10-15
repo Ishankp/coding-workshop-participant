@@ -53,8 +53,10 @@ export default function ProjectForm({ project = null, onSaved, onCancel }) {
       const saved = project ? await updateProject(project.projectId, data) : await createProject(data)
       onSaved(saved)
     } catch (err) {
-      setFieldErrors(err.fields ?? {})
-      setFormError(err.fields ? '' : err.message)
+      // Field errors go next to their fields; anything else (e.g. a 409 conflict) goes in the banner
+      const fieldErrs = err.fields ?? {}
+      setFieldErrors(fieldErrs)
+      setFormError(Object.keys(fieldErrs).length ? '' : err.message)
       setSubmitting(false)
     }
   }
