@@ -29,3 +29,11 @@ for fn in "$BACKEND_DIR"/*/function.py; do
     cp "$SHARED_DIR"/*.py "$svc_dir/shared/"
     echo "  Synced shared code into $(basename "$svc_dir")"
 done
+
+# The dbsetup Lambda applies backend/db/*.sql from inside the VPC, so it needs its own copy
+if [ -d "$BACKEND_DIR/dbsetup" ]; then
+    rm -rf "$BACKEND_DIR/dbsetup/sql"
+    mkdir -p "$BACKEND_DIR/dbsetup/sql"
+    cp "$BACKEND_DIR"/db/*.sql "$BACKEND_DIR/dbsetup/sql/"
+    echo "  Synced backend/db SQL into dbsetup"
+fi
