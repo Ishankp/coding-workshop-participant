@@ -133,17 +133,23 @@ No redeploy is needed afterwards; the running Lambdas read the same database.
 
 6. RUNNING THE TESTS
 --------------------
-Backend (432 unit tests, pytest; no database needed - repositories are replaced
-by in-memory fakes):
+Three layers: backend unit tests (pytest), frontend unit/component tests
+(Vitest + React Testing Library) and browser end-to-end tests (Playwright)
+against the running app. Coverage targets: backend and frontend 80%+ (both
+enforced), API endpoints and error handling 90%+, critical user paths 100% E2E.
 
-    pip install --user pytest          # once
+Backend (432 unit tests; no database needed - repositories are replaced by
+in-memory fakes):
+
+    pip install --user pytest pytest-cov   # once
+    ./bin/test-backend.sh                  # all services + one combined coverage
+                                           # report; fails under 80% line coverage
+
+  Expected: every service prints "N passed" and the combined TOTAL is >= 80%
+  (currently 86%; repositories are the only low files because the SQL is not
+  run). One service at a time:
+
     ./bin/sync-shared.sh               # once, and after editing backend/_shared
-    for s in auth users projects milestones employees dbsetup; do
-      (cd backend/$s && python3 -m pytest tests -q)
-    done
-
-  Expected: every service prints "N passed". One service at a time:
-
     cd backend/projects && python3 -m pytest tests -q
     cd backend/projects && python3 -m pytest tests -v -k budget   # a subset
 
@@ -157,18 +163,59 @@ by in-memory fakes):
 
   What the tests cover: every service's business rules (permissions by role,
   membership, validation, loop detection in dependencies, date bounds, hours
-  guards), controllers (body validation), and routing (status codes per route).
+  guards), controllers (body validation), and routing (every one of the 38
+  routes has a handler-level status-code test).
 
-Frontend:
+Frontend unit and component tests (305 tests, jsdom, no server needed):
 
     cd frontend
-    npm run build        # type/syntax check and production bundle (must succeed)
+    npm install              # once
+    npm test                 # run everything once
+    npm run test:watch       # re-run on save
+    npm run test:coverage    # text + HTML report in frontend/coverage/;
+                             # fails under 80% lines/branches/functions
+    npm run build            # production bundle (must still succeed)
 
-  There are no automated frontend tests yet (see Known gaps). "npm run lint"
-  currently fails to start because two ESLint plugins named in
+  Every file under src/ has a sibling *.test.js(x). API calls are mocked at
+  the service module, so tests check what the UI sends and how it renders each
+  response (loading, success, 403/404/other errors, role differences, form
+  validation, every button). Shared render helper: src/test/helpers.jsx.
+  Current coverage is ~99% lines and branches.
+
+End-to-end tests (20 Playwright tests, real browser, real backend and
+database). Start the app first, with the seed data loaded (section 3):
+
+    cd frontend
+    npx playwright install chromium   # once
+    npm run test:e2e                  # uses the dev server on :3000 and the
+                                      # API on :3001; starts Vite if needed
+    npx playwright show-trace test-results/<test>/trace.zip   # on a failure
+
+  Paths covered (e2e/*.spec.js): sign in / wrong password / empty fields /
+  sign out / session survives reload / redirect to login and back / 404 page;
+  employee sees only their projects, no budget or create button, refused on
+  other projects and the accounts page, opens a milestone, searches projects
+  and people, logs hours (and cannot edit or remove them), invalid hours;
+  manager creates a project, is stopped by milestone date bounds, adds a
+  milestone, adds a direct report and assigns them, marks the milestone
+  complete, archives the project (now hidden from the employee), and adds,
+  edits and removes a report's time entry; admin sees all projects, creates
+  and deletes an empty project, is refused deleting one with hours, creates an
+  account, resets its password, signs in as that person, deactivates the
+  account and confirms it can no longer sign in, and is refused a duplicate
+  username. Records the tests create use unique names; the project is deleted
+  at the end, but test accounts stay (deactivated) because accounts can't be
+  deleted.
+
+  "npm run lint" currently fails to start because two ESLint plugins named in
   eslint.config.js are not installed; it is not part of the build.
 
-Manual end-to-end check (after ./bin/start-dev.sh):
+CI (.github/workflows): the Python workflow runs bandit and
+./bin/test-backend.sh; the React workflow runs npm audit, the unit tests with
+the coverage floor, and the build. The E2E tests are not in CI because they
+need PostgreSQL, LocalStack and the seed data.
+
+Manual API check (after ./bin/start-dev.sh):
 
     # log in and list projects as Priya
     TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
@@ -176,9 +223,6 @@ Manual end-to-end check (after ./bin/start-dev.sh):
       -d '{"username":"priya","password":"Password123!"}' | python3 -c \
       'import sys,json; print(json.load(sys.stdin)["token"])')
     curl -s http://localhost:3001/api/projects -H "Authorization: Bearer $TOKEN"
-
-  Or in the browser: log in as each seed user and compare what they can see
-  (section 8).
 
 Database rules are enforced in PostgreSQL too (schema.sql): milestones must
 lie within their project's dates, hours per entry are 0-24, dependencies can't
@@ -376,8 +420,14 @@ ENVIRONMENT.config (never commit that file).
 
 11. KNOWN GAPS
 --------------
-  - No automated frontend tests, and backend tests do not hit a real database
-    (SQL is only exercised by running the app).
+  - Backend unit tests do not hit a real database (the SQL in the repository
+    modules is only exercised by running the app and by the E2E tests).
+  - The E2E tests need the full local stack running and are not run in CI.
+  - After adding someone to a project, the "added to the project" notice never
+    shows: the page reloads and remounts the Team card, which clears it.
+  - Signing out leaves a "return to this page" redirect in browser history;
+    if someone else then signs in on the same tab they land on that page and
+    may see "No access" (e.g. the Accounts page).
   - The database is loaded with bin/db-setup.sh reset only (no incremental
     migrations); schema changes mean reloading the seed data.
   - The first admin account can only come from seed.sql (no setup screen).

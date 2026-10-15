@@ -25,3 +25,29 @@ jobs:
 
       - name: Run Bandit
         run: bandit -r ./backend
+
+  pytest:
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Setup GitHub Actions
+        uses: actions/checkout@master
+
+      - name: Install Python
+        uses: actions/setup-python@master
+        with:
+          python-version: '3.13'
+
+      - name: Install test tools and service dependencies
+        run: |
+          pip3 install pytest pytest-cov
+          for s in auth users projects milestones employees dbsetup; do
+            pip3 install -r backend/$s/requirements.txt
+          done
+
+      - name: Run backend tests with combined coverage (fails under 80%)
+        run: ./bin/test-backend.sh
