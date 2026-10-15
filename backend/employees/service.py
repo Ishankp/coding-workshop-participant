@@ -97,7 +97,9 @@ class EmployeeService:
 
         # Admins and the employee's manager see all of their projects; others only the ones they share
         visible_to = None if (user.is_admin or manages) else user.id
-        projects = self._group_projects(self._repository.find_projects_with_milestones(employee_id, visible_to))
+        projects = self._group_projects(self._repository.find_projects_with_milestones(
+            employee_id, visible_to, include_archived=user.is_admin or user.is_manager,
+        ))
         return {
             "employeeId": employee["employee_id"],
             "name": full_name(employee["first_name"], employee["last_name"], employee["username"]),

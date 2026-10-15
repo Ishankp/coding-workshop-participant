@@ -76,9 +76,9 @@ PROJECT_MILESTONES = [
 
 
 def milestone_row(milestone_id, name, start, end, employee_id=None, first=None, last=None, username=None,
-                  completed_at=None):
+                  completed_at=None, archived_at=None):
     return {"milestone_id": milestone_id, "milestone_name": name, "start_date": start, "end_date": end,
-            "completed_at": completed_at,
+            "completed_at": completed_at, "archived_at": archived_at,
             "employee_id": employee_id, "first_name": first, "last_name": last, "username": username}
 
 
@@ -90,6 +90,7 @@ MILESTONE_ROWS = [
     milestone_row(4, "Unscheduled", None, None, 3, "Priya", "Patel", "priya"),
     milestone_row(5, "Nearly done", date(2026, 9, 14), date(2026, 10, 24)),
     milestone_row(6, "Finished", date(2026, 8, 1), date(2026, 9, 1), completed_at=datetime(2026, 8, 30, 12)),
+    milestone_row(7, "Shelved", date(2026, 9, 1), date(2026, 9, 20), archived_at=datetime(2026, 9, 5)),
 ]
 
 
@@ -105,18 +106,22 @@ class FakeProjectRepository:
         self.calls.append(("find_project_cost", hours_per_year))
         return dict(self.cost)
 
-    def find_projects_by_user_id(self, user_id, query=None):
+    def find_projects_by_user_id(self, user_id, query=None, include_archived=True):
         self.calls.append(("find_projects_by_user_id", query))
-        rows = [dict(self.project)] if user_id == MEMBER.id else []
-        return [r for r in rows if query is None or query.lower() in r["title"].lower()]
+        rows = [dict(self.project), {**PROJECT, "id": 3, "title": "Old thing", "archived_at": datetime(2026, 1, 1)}] \
+            if user_id == MEMBER.id else []
+        return [r for r in rows if (query is None or query.lower() in r["title"].lower())
+                and (include_archived or r["archived_at"] is None)]
 
     def find_project_by_id(self, project_id):
         self.calls.append("find_project_by_id")
+        if project_id == 3:
+            return {**PROJECT, "id": 3, "title": "Old thing", "archived_at": datetime(2026, 1, 1)}
         return dict(self.project) if project_id == 1 else None
 
     def is_project_member(self, project_id, user_id):
         self.calls.append("is_project_member")
-        return project_id == 1 and user_id == MEMBER.id
+        return project_id in (1, 3) and user_id == MEMBER.id
 
     def find_members_with_milestones(self, project_id):
         self.calls.append("find_members_with_milestones")
@@ -157,7 +162,7 @@ def fixture_service(repo):
 # Service
 
 def test_list_projects_shapes_rows(service):
-    [project] = service.list_projects_for_user(MEMBER)
+    [project] = service.list_projects_for_user(MEMBER)   # the archived one is hidden from employees
     completion = project.pop("completion")
     assert project == {
         "projectId": 1, "title": "Portal", "startDate": date(2026, 7, 1), "endDate": None,
@@ -402,7 +407,8 @@ def test_project_milestones_carry_completed_status(service):
 
 def test_milestones_sorted_by_time_elapsed_then_end_date(service):
     names = [m["name"] for m in service.get_project_milestones(MEMBER, 1)["milestones"]]
-    # Finished and Overdue 100% (earlier end date first), Nearly done 75%, Halfway 50%, Upcoming 0%, Unscheduled last
+    # Finished and Overdue 100% (earlier end date first), Nearly done 75%, Halfway 50%, Upcoming 0%, Unscheduled last;
+    # the archived "Shelved" is hidden from employees
     assert names == ["Finished", "Overdue", "Nearly done", "Halfway", "Upcoming", "Unscheduled"]
 
 
@@ -586,3 +592,25 @@ def test_dependency_alerts_are_attached_to_the_dependent_milestone(service):
     assert by_name["Halfway"]["alerts"] == ["Overdue is 13 days past its end date and not complete"]
     assert by_name["Upcoming"]["dependsOn"][0]["completed"] is True and by_name["Upcoming"]["alerts"] == []
     assert by_name["Overdue"]["dependsOn"] == [] and by_name["Overdue"]["alerts"] == []
+
+
+# Archived projects and milestones
+
+def test_employee_does_not_see_archived_projects_but_manager_does(service):
+    assert [p["title"] for p in service.list_projects_for_user(MEMBER)] == ["Portal"]
+    assert [p["title"] for p in service.list_projects_for_user(MANAGER)] == ["Portal", "Old thing"]
+
+
+def test_employee_cannot_open_an_archived_project(service):
+    with pytest.raises(ForbiddenError, match="archived"):
+        service.get_project(MEMBER, 3)
+    assert service.get_project(MANAGER, 3)["archivedAt"] is not None
+    assert service.get_project(ADMIN, 3)["title"] == "Old thing"
+
+
+def test_archived_milestones_hidden_from_employees_shown_to_managers(service):
+    employee_view = [m["name"] for m in service.get_project_milestones(MEMBER, 1)["milestones"]]
+    manager_view = {m["name"]: m for m in service.get_project_milestones(MANAGER, 1)["milestones"]}
+    assert "Shelved" not in employee_view
+    assert manager_view["Shelved"]["archivedAt"] == datetime(2026, 9, 5)
+    assert manager_view["Halfway"]["archivedAt"] is None

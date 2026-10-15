@@ -74,7 +74,7 @@ def _optional_text(body: dict, name: str, limit: int, fields: dict) -> str | Non
 
 
 class AuthoringController:
-    """Routes: POST /projects, POST /projects/{projectId}/milestones."""
+    """Routes: POST /projects, POST /projects/{projectId}/milestones, POST /projects/{projectId}/archive|unarchive."""
 
     def __init__(self, service: AuthoringService) -> None:
         self._service = service
@@ -91,6 +91,18 @@ class AuthoringController:
         if fields:
             raise ValidationError("Invalid project", fields)
         return json_response(201, self._service.create_project(user, title, start, end, budget))
+
+    def archive_project(self, request: Request) -> dict:
+        """POST /projects/{projectId}/archive -> 200 {projectId, title, archivedAt} | 400 | 401 | 403 | 404"""
+        user = require_user(request)
+        project_id = request.id_param("project_id", "projectId")
+        return json_response(200, self._service.set_project_archived(user, project_id, True))
+
+    def unarchive_project(self, request: Request) -> dict:
+        """POST /projects/{projectId}/unarchive -> 200 {projectId, title, archivedAt: null} | 400 | 401 | 403 | 404"""
+        user = require_user(request)
+        project_id = request.id_param("project_id", "projectId")
+        return json_response(200, self._service.set_project_archived(user, project_id, False))
 
     def create_milestone(self, request: Request) -> dict:
         """

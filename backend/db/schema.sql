@@ -38,6 +38,7 @@ CREATE TABLE milestones (
   start_date   DATE,
   end_date     DATE,
   completed_at TIMESTAMP,                      -- set when the milestone is done
+  archived_at  TIMESTAMP,                      -- hidden from employees and progress bars; still counted in costs
   CONSTRAINT milestones_dates_chk CHECK (end_date IS NULL OR start_date IS NULL OR end_date >= start_date)
 );
 

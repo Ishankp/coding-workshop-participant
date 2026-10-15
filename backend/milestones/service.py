@@ -3,7 +3,9 @@ Milestone service: business logic for reading milestones and managing the
 dependencies between them.
 
 Admins can see every milestone; anyone else only sees milestones in projects
-they are members of. Dependencies ("A depends on B finishing first") can be
+they are members of, and employees can't see archived milestones (or milestones
+of archived projects) at all. Managers who are members, and admins, can archive
+and restore milestones. Dependencies ("A depends on B finishing first") can be
 added and removed by admins and by managers who are members of the project.
 Adding one is refused when it would create a loop, when the two milestones are
 in different projects, or when the dependent milestone starts before the one
@@ -34,6 +36,7 @@ class MilestoneService:
 
         Returns:
             dict: {milestoneId, projectId, name, description, startDate, endDate, completedAt,
+                   archivedAt, projectArchivedAt,
                    dependsOn: [{milestoneId, name, completed, alert}],
                    requiredBy: [{milestoneId, name}],
                    totalHours,
@@ -58,6 +61,8 @@ class MilestoneService:
             "startDate": milestone["start_date"],
             "endDate": milestone["end_date"],
             "completedAt": milestone["completed_at"],
+            "archivedAt": milestone["archived_at"],
+            "projectArchivedAt": milestone["project_archived_at"],
             "dependsOn": [
                 {
                     "milestoneId": view["dependsOnMilestoneId"],
@@ -133,6 +138,22 @@ class MilestoneService:
             "dependsOnName": prerequisite["title"],
         }
 
+    def set_archived(self, user: CurrentUser, milestone_id: int, archived: bool) -> dict:
+        """
+        Archive (hide from employees and progress) or restore a milestone.
+
+        Returns:
+            dict: {milestoneId, name, archivedAt}
+
+        Raises:
+            NotFoundError: no such milestone.
+            ForbiddenError: not an admin or a manager who is a member of the project.
+        """
+        milestone = self._load_visible_milestone(user, milestone_id)
+        self._require_manager(user, milestone["project_id"])
+        row = self._repository.set_archived(milestone_id, archived)
+        return {"milestoneId": row["id"], "name": row["title"], "archivedAt": row["archived_at"]}
+
     def remove_dependency(self, user: CurrentUser, milestone_id: int, depends_on_id: int) -> None:
         """
         Remove a dependency.
@@ -152,12 +173,14 @@ class MilestoneService:
             raise NotFoundError(f"Milestone {milestone_id} not found")
         if not user.is_admin and not self._repository.is_project_member(milestone["project_id"], user.id):
             raise ForbiddenError("You are not a member of this milestone's project")
+        if (milestone["archived_at"] or milestone["project_archived_at"]) and not (user.is_admin or user.is_manager):
+            raise ForbiddenError("This milestone has been archived")
         return milestone
 
     def _require_manager(self, user: CurrentUser, project_id: int) -> None:
         # Membership was already checked by _load_visible_milestone, so a manager here is a member
         if not (user.is_admin or user.is_manager):
-            raise ForbiddenError("Only managers of this project or admins can change dependencies")
+            raise ForbiddenError("Only managers of this project or admins can change milestones")
 
 
 def _work_log(rows: list[dict]) -> dict:

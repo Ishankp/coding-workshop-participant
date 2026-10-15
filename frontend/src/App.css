@@ -1149,3 +1149,23 @@ select[aria-invalid='true'] {
 .page-title .button-link {
   margin-left: auto;
 }
+
+/* Archiving */
+
+.archive-button {
+  margin-left: auto;
+}
+
+.notice-muted {
+  margin: -0.5rem 0 1rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.milestone.is-archived {
+  opacity: 0.7;
+}

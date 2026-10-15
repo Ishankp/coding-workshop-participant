@@ -55,6 +55,7 @@ class FakeProjectRepository:
         self.members = {1: {1, 3}}                       # project -> employee ids
         self.assignments = {(3, 2)}                      # (employee, milestone)
         self.entries = {(3, 2): 2}                       # (employee, milestone) -> time entries logged
+        self.archived = {}                               # milestone id -> archived_at
 
     def find_project_by_id(self, project_id):
         return {"id": 1, "title": "Portal"} if project_id == 1 else None
@@ -101,7 +102,9 @@ class FakeProjectRepository:
         return before - len(self.assignments)
 
     def find_project_milestone(self, project_id, milestone_id):
-        return {"id": milestone_id, "title": MILESTONES[milestone_id]} if project_id == 1 and milestone_id in MILESTONES else None
+        if project_id != 1 or milestone_id not in MILESTONES:
+            return None
+        return {"id": milestone_id, "title": MILESTONES[milestone_id], "archived_at": self.archived.get(milestone_id)}
 
     def is_assigned(self, employee_id, milestone_id):
         return (employee_id, milestone_id) in self.assignments
@@ -228,6 +231,12 @@ def test_assign_non_member_adds_them_to_the_project(service, repo):
 def test_assign_twice_is_a_conflict(service):
     with pytest.raises(ConflictError, match="already assigned to Design System"):
         service.assign_milestone(MANAGER, 1, 2, 3)
+
+
+def test_assign_to_archived_milestone_is_refused(service, repo):
+    repo.archived[3] = "2026-10-01"
+    with pytest.raises(ConflictError, match="Build & Launch is archived"):
+        service.assign_milestone(MANAGER, 1, 3, 3)
 
 
 def test_assign_to_milestone_of_another_project_is_404(service):

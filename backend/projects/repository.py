@@ -36,10 +36,13 @@ class ProjectRepository:
     def __init__(self, get_connection: Callable[[], Connection]) -> None:
         self._get_connection = get_connection
 
-    def find_projects_by_user_id(self, user_id: int, query: str | None = None) -> list[dict]:
+    def find_projects_by_user_id(
+        self, user_id: int, query: str | None = None, include_archived: bool = True,
+    ) -> list[dict]:
         """
         Return every project the user is assigned to, with its dates and status timestamps;
         may be empty. With query, only projects whose title or milestone titles contain it.
+        Archived projects are left out unless include_archived.
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
@@ -47,10 +50,22 @@ class ProjectRepository:
                 "JOIN employee_projects ep ON ep.project_id = p.id "
                 "JOIN employees e ON e.id = ep.employee_id "
                 "WHERE e.user_id = %(user_id)s AND " + _PROJECT_MATCHES + " "
+                "  AND (%(include_archived)s OR p.archived_at IS NULL) "
                 "ORDER BY p.title",
-                {"user_id": user_id, "pattern": contains_pattern(query) if query else None},
+                {"user_id": user_id, "pattern": contains_pattern(query) if query else None,
+                 "include_archived": include_archived},
             )
             return cur.fetchall()
+
+    def set_project_archived(self, project_id: int, archived: bool) -> dict:
+        """Archive or restore a project; return its row."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE projects SET archived_at = CASE WHEN %s THEN COALESCE(archived_at, now()) ELSE NULL END "
+                "WHERE id = %s RETURNING id, title, start_date, end_date, budget, archived_at, completed_at",
+                (archived, project_id),
+            )
+            return cur.fetchone()
 
     def find_all_projects(self, query: str | None = None) -> list[dict]:
         """Return every project with its dates and status timestamps; may be empty. With query, only matches."""
@@ -139,7 +154,7 @@ class ProjectRepository:
         with self._get_connection().cursor() as cur:
             cur.execute(
                 "SELECT m.id AS milestone_id, m.title AS milestone_name, m.start_date, m.end_date, m.completed_at, "
-                "       e.id AS employee_id, u.first_name, u.last_name, u.username "
+                "       m.archived_at, e.id AS employee_id, u.first_name, u.last_name, u.username "
                 "FROM milestones m "
                 "LEFT JOIN (employee_milestones em "
                 "           JOIN employees e ON e.id = em.employee_id "
@@ -177,15 +192,16 @@ class ProjectRepository:
 
     def find_milestones_for_projects(self, project_ids: list[int]) -> list[dict]:
         """
-        Return every milestone of the given projects (id, project_id, title, dates,
-        completed_at), ordered by project then start date; may be empty.
+        Return every non-archived milestone of the given projects (id, project_id, title,
+        dates, completed_at), ordered by project then start date; may be empty. Archived
+        milestones are left out because they don't count towards progress.
         """
         if not project_ids:
             return []
         with self._get_connection().cursor() as cur:
             cur.execute(
                 "SELECT id, project_id, title, start_date, end_date, completed_at "
-                "FROM milestones WHERE project_id = ANY(%s) "
+                "FROM milestones WHERE project_id = ANY(%s) AND archived_at IS NULL "
                 "ORDER BY project_id, start_date NULLS LAST, title, id",
                 (project_ids,),
             )
@@ -291,9 +307,12 @@ class ProjectRepository:
             return cur.rowcount
 
     def find_project_milestone(self, project_id: int, milestone_id: int) -> dict | None:
-        """Return {id, title} if the milestone belongs to the project, else None."""
+        """Return {id, title, archived_at} if the milestone belongs to the project, else None."""
         with self._get_connection().cursor() as cur:
-            cur.execute("SELECT id, title FROM milestones WHERE id = %s AND project_id = %s", (milestone_id, project_id))
+            cur.execute(
+                "SELECT id, title, archived_at FROM milestones WHERE id = %s AND project_id = %s",
+                (milestone_id, project_id),
+            )
             return cur.fetchone()
 
     def is_assigned(self, employee_id: int, milestone_id: int) -> bool:
@@ -351,7 +370,7 @@ class ProjectRepository:
                 "  AND NOT EXISTS ("
                 "    SELECT 1 FROM employee_milestones em"
                 "    JOIN milestones m ON m.id = em.milestone_id"
-                "    WHERE em.employee_id = e.id AND m.project_id = ep.project_id"
+                "    WHERE em.employee_id = e.id AND m.project_id = ep.project_id AND m.archived_at IS NULL"
                 "  ) "
                 "ORDER BY u.last_name, u.first_name, e.id",
                 (project_id,),

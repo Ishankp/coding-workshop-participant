@@ -35,7 +35,8 @@ ADMIN = CurrentUser(id=1, role="admin")
 
 def milestone(mid, project_id, title, start, end, completed_at=None):
     return {"id": mid, "project_id": project_id, "title": title, "description": None,
-            "start_date": start, "end_date": end, "completed_at": completed_at}
+            "start_date": start, "end_date": end, "completed_at": completed_at,
+            "archived_at": None, "project_archived_at": None}
 
 
 MILESTONES = {

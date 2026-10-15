@@ -18,12 +18,23 @@ class MilestoneRepository:
         self._get_connection = get_connection
 
     def find_milestone_by_id(self, milestone_id: int) -> dict | None:
-        """Return the milestone's details including its project_id, or None."""
+        """Return the milestone's details including its project_id and whether its project is archived, or None."""
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT id, project_id, title, description, start_date, end_date, completed_at "
-                "FROM milestones WHERE id = %s",
+                "SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.end_date, m.completed_at, "
+                "       m.archived_at, p.archived_at AS project_archived_at "
+                "FROM milestones m JOIN projects p ON p.id = m.project_id WHERE m.id = %s",
                 (milestone_id,),
+            )
+            return cur.fetchone()
+
+    def set_archived(self, milestone_id: int, archived: bool) -> dict:
+        """Archive or restore a milestone; return {id, title, archived_at}."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE milestones SET archived_at = CASE WHEN %s THEN COALESCE(archived_at, now()) ELSE NULL END "
+                "WHERE id = %s RETURNING id, title, archived_at",
+                (archived, milestone_id),
             )
             return cur.fetchone()
 

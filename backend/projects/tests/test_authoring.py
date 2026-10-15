@@ -69,6 +69,11 @@ class FakeProjectRepository:
     def insert_member(self, project_id, employee_id):
         self.members.setdefault(project_id, set()).add(employee_id)
 
+    def set_project_archived(self, project_id, archived):
+        row = self.projects[project_id]
+        row["archived_at"] = date(2026, 10, 14) if archived else None
+        return dict(row)
+
 
 @pytest.fixture(name="repo")
 def fixture_repo():
@@ -140,6 +145,25 @@ def test_milestone_in_unknown_project_is_404(service):
         service.create_milestone(ADMIN, 404, "X", None, None, None)
 
 
+# Archiving
+
+def test_manager_archives_and_restores_project(service, repo):
+    assert service.set_project_archived(MANAGER, 1, True)["archivedAt"] == date(2026, 10, 14)
+    assert repo.projects[1]["archived_at"] is not None
+    assert service.set_project_archived(MANAGER, 1, False)["archivedAt"] is None
+
+
+@pytest.mark.parametrize("user", [EMPLOYEE, OUTSIDER])
+def test_only_project_managers_and_admins_archive(service, repo, user):
+    with pytest.raises(ForbiddenError):
+        service.set_project_archived(user, 1, True)
+    assert repo.projects[1]["archived_at"] is None
+
+
+def test_admin_archives_any_project(service):
+    assert service.set_project_archived(ADMIN, 1, True)["archivedAt"] is not None
+
+
 # Handler + body validation
 
 @pytest.fixture(name="handler")
@@ -148,6 +172,8 @@ def fixture_handler(monkeypatch, service):
     router = Router()
     router.add("POST", "/", controller.create_project)
     router.add("POST", "/{project_id}/milestones", controller.create_milestone)
+    router.add("POST", "/{project_id}/archive", controller.archive_project)
+    router.add("POST", "/{project_id}/unarchive", controller.unarchive_project)
     monkeypatch.setattr(function, "router", router)
     return function.handler
 
@@ -196,6 +222,10 @@ def test_handler_validation_names_fields(handler, path, body, bad_fields):
     ("/", None, {"title": "A"}, 401),
     ("/1/milestones", EMPLOYEE, {"title": "A"}, 403),
     ("/404/milestones", ADMIN, {"title": "A"}, 404),
+    ("/1/archive", MANAGER, None, 200),
+    ("/1/unarchive", MANAGER, None, 200),
+    ("/1/archive", EMPLOYEE, None, 403),
+    ("/404/archive", ADMIN, None, 404),
     ("/", MANAGER, None, 400),
 ])
 def test_handler_statuses(handler, path, user, body, status):

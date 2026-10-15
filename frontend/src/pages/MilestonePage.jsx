@@ -1,7 +1,8 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
-import { getMilestone } from '../services/milestoneService'
+import { archiveMilestone, getMilestone, unarchiveMilestone } from '../services/milestoneService'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
 import { formatDate, formatHours } from '../utils/format'
 
@@ -12,6 +13,28 @@ export default function MilestonePage() {
   const { milestoneId } = useParams()
   const loadMilestone = useCallback(() => getMilestone(milestoneId), [milestoneId])
   const { data: milestone, error, loading, reload } = useApiData(loadMilestone)
+  const { role } = useAuth().user
+  const canManage = role === 'admin' || role === 'manager'
+  const [archiving, setArchiving] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
+
+  const toggleArchive = async () => {
+    const archived = Boolean(milestone.archivedAt)
+    const question = archived
+      ? `Restore "${milestone.name}"? Employees will see it again and it will count towards progress.`
+      : `Archive "${milestone.name}"? Employees won't see it and it won't count towards progress (hours still count in the budget).`
+    if (!window.confirm(question)) return
+    setArchiving(true)
+    setArchiveError('')
+    try {
+      await (archived ? unarchiveMilestone(milestone.milestoneId) : archiveMilestone(milestone.milestoneId))
+      reload()
+    } catch (err) {
+      setArchiveError(err.message)
+    } finally {
+      setArchiving(false)
+    }
+  }
 
   if (loading) return <Loading label="Loading milestone…" />
   if (error) return <ErrorMessage error={error} onRetry={reload} />
@@ -28,7 +51,21 @@ export default function MilestonePage() {
         ) : (
           <span className="status-badge">Milestone</span>
         )}
+        {milestone.archivedAt && <span className="status-badge">Archived {formatDate(milestone.archivedAt)}</span>}
+        {canManage && (
+          <button type="button" className="secondary archive-button" onClick={toggleArchive} disabled={archiving}>
+            {archiving ? 'Saving…' : milestone.archivedAt ? 'Restore milestone' : 'Archive milestone'}
+          </button>
+        )}
       </div>
+      {archiveError && (
+        <div className="alert" role="alert">
+          {archiveError}
+        </div>
+      )}
+      {milestone.projectArchivedAt && !milestone.archivedAt && (
+        <p className="notice-muted">This milestone&apos;s project is archived, so employees can&apos;t see it.</p>
+      )}
 
       <dl className="card details">
         <div>

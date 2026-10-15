@@ -35,6 +35,18 @@ class MilestoneController:
             raise ValidationError("Choose a milestone", {"dependsOnMilestoneId": "Choose a milestone"})
         return json_response(201, self._service.add_dependency(user, milestone_id, depends_on))
 
+    def archive_milestone(self, request: Request) -> dict:
+        """POST /milestones/{milestoneId}/archive -> 200 {milestoneId, name, archivedAt} | 400 | 401 | 403 | 404"""
+        user = require_user(request)
+        milestone_id = request.id_param("milestone_id", "milestoneId")
+        return json_response(200, self._service.set_archived(user, milestone_id, True))
+
+    def unarchive_milestone(self, request: Request) -> dict:
+        """POST /milestones/{milestoneId}/unarchive -> 200 {milestoneId, name, archivedAt: null} | 400 | 401 | 403 | 404"""
+        user = require_user(request)
+        milestone_id = request.id_param("milestone_id", "milestoneId")
+        return json_response(200, self._service.set_archived(user, milestone_id, False))
+
     def remove_dependency(self, request: Request) -> dict:
         """DELETE /milestones/{milestoneId}/dependencies/{dependsOnMilestoneId} -> 204 | 400 | 401 | 403 | 404"""
         user = require_user(request)

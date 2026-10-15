@@ -42,7 +42,8 @@ class ProjectService:
         if user.is_admin:
             rows = self._repository.find_all_projects(query)
         else:
-            rows = self._repository.find_projects_by_user_id(user.id, query)
+            # Employees never see archived projects; managers keep them so they can restore them
+            rows = self._repository.find_projects_by_user_id(user.id, query, include_archived=user.is_manager)
         today = self._today()
 
         milestones_by_project: dict[int, list[dict]] = {row["id"]: [] for row in rows}
@@ -122,8 +123,8 @@ class ProjectService:
 
         Returns:
             dict: {
-                "milestones": [{milestoneId, name, startDate, endDate, completedAt, timeElapsedPercent,
-                                daysLeft, status, employees: [{employeeId, name, username}],
+                "milestones": [{milestoneId, name, startDate, endDate, completedAt, archivedAt,
+                                timeElapsedPercent, daysLeft, status, employees: [{employeeId, name, username}],
                                 dependsOn: [{milestoneId, name, completed}],
                                 alerts: [str]}],          # prerequisites past due and not complete
                 "dependencies": [{milestoneId, milestoneName, dependsOnMilestoneId, dependsOnName,
@@ -148,6 +149,7 @@ class ProjectService:
                     "startDate": row["start_date"],
                     "endDate": row["end_date"],
                     "completedAt": row["completed_at"],
+                    "archivedAt": row["archived_at"],
                     **milestone_timeline(row["start_date"], row["end_date"], today, bool(row["completed_at"])),
                     "employees": [],
                     "dependsOn": [],
@@ -173,8 +175,13 @@ class ProjectService:
             percent = m["timeElapsedPercent"]
             return (percent is None, -(percent or 0), m["endDate"] or date.max, m["name"])
 
+        # Archived milestones are hidden from employees; dependencies (and their alerts) still apply
+        visible = [
+            m for m in milestones.values() if m["archivedAt"] is None or user.is_admin or user.is_manager
+        ]
+
         return {
-            "milestones": sorted(milestones.values(), key=sort_key),
+            "milestones": sorted(visible, key=sort_key),
             "dependencies": dependencies,
             "unassignedEmployees": [
                 _employee(row) for row in self._repository.find_members_without_milestones(project_id)
@@ -241,6 +248,8 @@ class ProjectService:
             raise NotFoundError(f"Project {project_id} not found")
         if not user.is_admin and not self._repository.is_project_member(project_id, user.id):
             raise ForbiddenError("You are not a member of this project")
+        if project["archived_at"] and not (user.is_admin or user.is_manager):
+            raise ForbiddenError("This project has been archived")
         return project
 
 

@@ -5,6 +5,7 @@ import { apiRequest } from './api'
  * @param {number|string} milestoneId
  * @returns {Promise<{milestoneId: number, projectId: number, name: string, description: string|null,
  *   startDate: string|null, endDate: string|null, completedAt: string|null,
+ *   archivedAt: string|null, projectArchivedAt: string|null,
  *   dependsOn: Array<{milestoneId: number, name: string, completed: boolean, alert: string|null}>,
  *   requiredBy: Array<{milestoneId: number, name: string}>,
  *   totalHours: number, hoursByEmployee: Array<{employeeId: number, name: string, hours: number}>,
@@ -14,6 +15,25 @@ import { apiRequest } from './api'
  */
 export function getMilestone(milestoneId) {
   return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}`)
+}
+
+/**
+ * Archive a milestone: hidden from employees and left out of progress; still counted in dependencies and costs.
+ * POST /api/milestones/{milestoneId}/archive (managers who are members, and admins)
+ * @param {number|string} milestoneId
+ * @returns {Promise<{milestoneId: number, name: string, archivedAt: string}>}
+ */
+export function archiveMilestone(milestoneId) {
+  return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}/archive`, { method: 'POST' })
+}
+
+/**
+ * Restore an archived milestone. POST /api/milestones/{milestoneId}/unarchive
+ * @param {number|string} milestoneId
+ * @returns {Promise<{milestoneId: number, name: string, archivedAt: null}>}
+ */
+export function unarchiveMilestone(milestoneId) {
+  return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}/unarchive`, { method: 'POST' })
 }
 
 /**

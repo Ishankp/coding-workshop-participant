@@ -29,7 +29,9 @@ MEMBER = CurrentUser(id=10, role="employee")
 OUTSIDER = CurrentUser(id=99, role="manager")
 ADMIN = CurrentUser(id=1, role="admin")
 MILESTONE = {"id": 5, "project_id": 2, "title": "Migration", "description": "Move data",
-             "start_date": None, "end_date": None, "completed_at": None}
+             "start_date": None, "end_date": None, "completed_at": None,
+             "archived_at": None, "project_archived_at": None}
+MANAGER = CurrentUser(id=10, role="manager")   # same person as MEMBER, as a manager
 
 
 def entry_row(eid, work_date, hours, note, employee, created_by, cb):
@@ -55,8 +57,15 @@ ENTRY_ROWS = [
 class FakeMilestoneRepository:
     """In-memory stand-in for MilestoneRepository."""
 
+    def __init__(self):
+        self.milestone = dict(MILESTONE)
+
     def find_milestone_by_id(self, milestone_id):
-        return dict(MILESTONE) if milestone_id == 5 else None
+        return dict(self.milestone) if milestone_id == 5 else None
+
+    def set_archived(self, milestone_id, archived):
+        self.milestone["archived_at"] = datetime(2026, 10, 14) if archived else None
+        return {"id": 5, "title": "Migration", "archived_at": self.milestone["archived_at"]}
 
     def is_project_member(self, project_id, user_id):
         return project_id == 2 and user_id == MEMBER.id
@@ -68,9 +77,40 @@ class FakeMilestoneRepository:
         return [dict(r) for r in ENTRY_ROWS] if milestone_id == 5 else []
 
 
+@pytest.fixture(name="repo")
+def fixture_repo():
+    return FakeMilestoneRepository()
+
+
 @pytest.fixture(name="service")
-def fixture_service():
-    return MilestoneService(FakeMilestoneRepository())
+def fixture_service(repo):
+    return MilestoneService(repo)
+
+
+# Archiving
+
+def test_manager_archives_and_employee_loses_access(service, repo):
+    assert service.set_archived(MANAGER, 5, True)["archivedAt"] == datetime(2026, 10, 14)
+    with pytest.raises(ForbiddenError, match="archived"):
+        service.get_milestone(MEMBER, 5)
+    assert service.get_milestone(MANAGER, 5)["archivedAt"] is not None
+    assert service.get_milestone(ADMIN, 5)["name"] == "Migration"
+    assert service.set_archived(MANAGER, 5, False)["archivedAt"] is None
+    assert service.get_milestone(MEMBER, 5)["archivedAt"] is None
+
+
+def test_milestone_of_archived_project_hidden_from_employees(service, repo):
+    repo.milestone["project_archived_at"] = datetime(2026, 9, 1)
+    with pytest.raises(ForbiddenError, match="archived"):
+        service.get_milestone(MEMBER, 5)
+    assert service.get_milestone(MANAGER, 5)["projectArchivedAt"] is not None
+
+
+@pytest.mark.parametrize("user", [MEMBER, OUTSIDER])
+def test_employees_and_non_members_cannot_archive(service, repo, user):
+    with pytest.raises(ForbiddenError):
+        service.set_archived(user, 5, True)
+    assert repo.milestone["archived_at"] is None
 
 
 def test_member_gets_milestone_with_project_id(service):
@@ -125,14 +165,17 @@ def test_non_member_of_its_project_is_403(service):
 @pytest.fixture(name="handler")
 def fixture_handler(monkeypatch, service):
     router = Router()
-    router.add("GET", "/{milestone_id}", MilestoneController(service).get_milestone)
+    controller = MilestoneController(service)
+    router.add("GET", "/{milestone_id}", controller.get_milestone)
+    router.add("POST", "/{milestone_id}/archive", controller.archive_milestone)
+    router.add("POST", "/{milestone_id}/unarchive", controller.unarchive_milestone)
     monkeypatch.setattr(function, "router", router)
     return function.handler
 
 
-def get(path, user=None):
+def get(path, user=None, method="GET"):
     headers = {"Authorization": f"Bearer {tokens.create_token(user.id, user.role)}"} if user else {}
-    return {"rawPath": path, "requestContext": {"http": {"method": "GET"}}, "headers": headers}
+    return {"rawPath": path, "requestContext": {"http": {"method": method}}, "headers": headers}
 
 
 @pytest.mark.parametrize("event,status", [
@@ -143,6 +186,9 @@ def get(path, user=None):
     (get("/404", MEMBER), 404),
     (get("/x", MEMBER), 400),
     (get("/", MEMBER), 404),
+    (get("/5/archive", MANAGER, "POST"), 200),
+    (get("/5/archive", MEMBER, "POST"), 403),
+    (get("/404/unarchive", ADMIN, "POST"), 404),
 ])
 def test_handler_statuses(handler, event, status):
     assert handler(event)["statusCode"] == status

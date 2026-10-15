@@ -71,8 +71,9 @@ class FakeEmployeeRepository:
         self.calls.append("shares_project_with_user")
         return user_id == TEAMMATE_USER.id
 
-    def find_projects_with_milestones(self, employee_id, visible_to_user_id):
+    def find_projects_with_milestones(self, employee_id, visible_to_user_id, include_archived=True):
         self.calls.append(("find_projects_with_milestones", visible_to_user_id))
+        self.include_archived = include_archived
         return [dict(r) for r in PROJECT_ROWS] if employee_id == 3 else []
 
     def find_all_employees(self, query=None):
@@ -269,3 +270,12 @@ def test_search_people_route(handler):
     assert [e["username"] for e in json.loads(handler(ev)["body"])] == ["priya"]
     ev["queryStringParameters"] = {"q": "zzz"}
     assert json.loads(handler(ev)["body"]) == []
+
+
+def test_profile_hides_archived_work_from_employees_only(service, repo):
+    service.get_employee(TEAMMATE_USER, 3)
+    assert repo.include_archived is False
+    service.get_employee(MANAGER_USER, 3)
+    assert repo.include_archived is True
+    service.get_employee(ADMIN, 3)
+    assert repo.include_archived is True

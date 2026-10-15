@@ -107,13 +107,16 @@ class EmployeeRepository:
             )
             return cur.fetchone()["manages"]
 
-    def find_projects_with_milestones(self, employee_id: int, visible_to_user_id: int | None) -> list[dict]:
+    def find_projects_with_milestones(
+        self, employee_id: int, visible_to_user_id: int | None, include_archived: bool = True,
+    ) -> list[dict]:
         """
         Return one row per (project, milestone) for the employee's projects, with
         the hours the employee has logged on each milestone (summed from time_entries).
 
         If visible_to_user_id is given, only projects that user is also a member
-        of are included; None means all of the employee's projects. Projects
+        of are included; None means all of the employee's projects. Unless
+        include_archived, archived projects and milestones are left out. Projects
         where the employee has no milestones still get one row, with milestone
         columns set to None.
         """
@@ -128,13 +131,15 @@ class EmployeeRepository:
                 "JOIN projects p ON p.id = ep.project_id "
                 "LEFT JOIN (employee_milestones em JOIN milestones m ON m.id = em.milestone_id) "
                 "       ON em.employee_id = ep.employee_id AND m.project_id = ep.project_id "
+                "      AND (%(include_archived)s OR m.archived_at IS NULL) "
                 "WHERE ep.employee_id = %(employee_id)s "
+                "  AND (%(include_archived)s OR p.archived_at IS NULL) "
                 "  AND (%(viewer)s::int IS NULL OR EXISTS ("
                 "    SELECT 1 FROM employee_projects vp"
                 "    JOIN employees ve ON ve.id = vp.employee_id"
                 "    WHERE vp.project_id = ep.project_id AND ve.user_id = %(viewer)s::int"
                 "  )) "
                 "ORDER BY p.title, p.id, m.start_date NULLS LAST, m.title",
-                {"employee_id": employee_id, "viewer": visible_to_user_id},
+                {"employee_id": employee_id, "viewer": visible_to_user_id, "include_archived": include_archived},
             )
             return cur.fetchall()

@@ -56,6 +56,22 @@ class AuthoringService:
             "completedAt": project["completed_at"],
         }
 
+    def set_project_archived(self, user: CurrentUser, project_id: int, archived: bool) -> dict:
+        """
+        Archive (hide from employees and progress) or restore a project.
+
+        Raises:
+            NotFoundError: no such project.
+            ForbiddenError: not an admin or a manager who is a member of the project.
+        """
+        self._load_managed_project(user, project_id)
+        project = self._repository.set_project_archived(project_id, archived)
+        return {
+            "projectId": project["id"],
+            "title": project["title"],
+            "archivedAt": project["archived_at"],
+        }
+
     def create_milestone(  # pylint: disable=too-many-arguments
         self, user: CurrentUser, project_id: int, title: str, description: str | None,
         start_date: date | None, end_date: date | None,
@@ -71,15 +87,7 @@ class AuthoringService:
             ForbiddenError: not an admin or a manager who is a member of the project.
             ValidationError: dates outside the project, or end before start.
         """
-        project = self._repository.find_project_by_id(project_id)
-        if project is None:
-            raise NotFoundError(f"Project {project_id} not found")
-        if not user.is_admin:
-            if not self._repository.is_project_member(project_id, user.id):
-                raise ForbiddenError("You are not a member of this project")
-            if not user.is_manager:
-                raise ForbiddenError("Only managers of this project or admins can add milestones")
-
+        project = self._load_managed_project(user, project_id)
         errors = milestone_date_errors(project, start_date, end_date)
         if errors:
             raise ValidationError("Milestone dates must fit inside the project", errors)
@@ -94,3 +102,14 @@ class AuthoringService:
             "endDate": milestone["end_date"],
             "completedAt": milestone["completed_at"],
         }
+
+    def _load_managed_project(self, user: CurrentUser, project_id: int) -> dict:
+        project = self._repository.find_project_by_id(project_id)
+        if project is None:
+            raise NotFoundError(f"Project {project_id} not found")
+        if not user.is_admin:
+            if not self._repository.is_project_member(project_id, user.id):
+                raise ForbiddenError("You are not a member of this project")
+            if not user.is_manager:
+                raise ForbiddenError("Only managers of this project or admins can change it")
+        return project

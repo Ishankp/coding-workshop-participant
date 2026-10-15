@@ -5,6 +5,7 @@ Wires the layers together and registers the routes:
     GET    /{milestone_id}                              One milestone's details and dependencies (members)
     POST   /{milestone_id}/dependencies                 Make it depend on another milestone (managers, admins)
     DELETE /{milestone_id}/dependencies/{depends_on}    Remove a dependency (managers, admins)
+    POST   /{milestone_id}/archive, /unarchive          Hide from employees and progress / restore (managers, admins)
 """
 
 import logging
@@ -26,6 +27,8 @@ router = Router()
 router.add("GET", "/{milestone_id}", _controller.get_milestone)
 router.add("POST", "/{milestone_id}/dependencies", _controller.add_dependency)
 router.add("DELETE", "/{milestone_id}/dependencies/{depends_on_id}", _controller.remove_dependency)
+router.add("POST", "/{milestone_id}/archive", _controller.archive_milestone)
+router.add("POST", "/{milestone_id}/unarchive", _controller.unarchive_milestone)
 
 
 def handler(event: dict | None = None, context: object = None) -> dict:  # pylint: disable=unused-argument

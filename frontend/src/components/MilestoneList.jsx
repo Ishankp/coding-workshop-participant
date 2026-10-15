@@ -36,6 +36,7 @@ const milestoneShape = PropTypes.shape({
   startDate: PropTypes.string,
   endDate: PropTypes.string,
   completedAt: PropTypes.string,
+  archivedAt: PropTypes.string,
   timeElapsedPercent: PropTypes.number,
   daysLeft: PropTypes.number,
   status: PropTypes.string.isRequired,
@@ -58,7 +59,7 @@ const milestoneShape = PropTypes.shape({
 function MilestoneCard({ milestone }) {
   const completed = milestone.status === 'completed'
   return (
-    <li className="card milestone">
+    <li className={`card milestone ${milestone.archivedAt ? 'is-archived' : ''}`}>
       <div className="milestone-header">
         <h3>
           <Link to={`/milestones/${milestone.milestoneId}`}>{milestone.name}</Link>
@@ -69,6 +70,7 @@ function MilestoneCard({ milestone }) {
               ⚠ Held up
             </span>
           )}
+          {milestone.archivedAt && <span className="status-badge">Archived</span>}
           <span className={`status-badge milestone-status-${milestone.status}`}>
             {MILESTONE_STATUS_LABELS[milestone.status] ?? milestone.status}
           </span>
@@ -124,10 +126,17 @@ export default function MilestoneList({ milestones }) {
     return <p className="muted">This project has no milestones yet.</p>
   }
 
+  // Archived milestones (only present for managers and admins) get their own section
+  const active = milestones.filter((m) => !m.archivedAt)
+  const archived = milestones.filter((m) => m.archivedAt)
+  const groups = archived.length
+    ? [...GROUPS, { key: 'archived', title: 'Archived', statuses: null, empty: '', openByDefault: false }]
+    : GROUPS
+
   return (
     <div className="milestone-groups">
-      {GROUPS.map((group) => {
-        const items = milestones.filter((m) => group.statuses.includes(m.status))
+      {groups.map((group) => {
+        const items = group.statuses ? active.filter((m) => group.statuses.includes(m.status)) : archived
         return (
           <details key={group.key} className="milestone-group" open={group.openByDefault}>
             <summary>

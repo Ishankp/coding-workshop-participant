@@ -105,6 +105,8 @@ class TeamService:
         milestone = self._repository.find_project_milestone(project_id, milestone_id)
         if milestone is None:
             raise NotFoundError(f"Milestone {milestone_id} is not part of project {project_id}")
+        if milestone["archived_at"]:
+            raise ConflictError(f"{milestone['title']} is archived; restore it before assigning people")
         employee = self._load_employee(employee_id)
         self._require_in_pool(user, employee)
         if self._repository.is_assigned(employee_id, milestone_id):

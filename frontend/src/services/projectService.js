@@ -98,6 +98,25 @@ export function createMilestone(projectId, data) {
 }
 
 /**
+ * Archive a project: hidden from employees and left out of progress (managers who are members, and admins).
+ * POST /api/projects/{projectId}/archive
+ * @param {number|string} projectId
+ * @returns {Promise<{projectId: number, title: string, archivedAt: string}>}
+ */
+export function archiveProject(projectId) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}/archive`, { method: 'POST' })
+}
+
+/**
+ * Restore an archived project. POST /api/projects/{projectId}/unarchive
+ * @param {number|string} projectId
+ * @returns {Promise<{projectId: number, title: string, archivedAt: null}>}
+ */
+export function unarchiveProject(projectId) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}/unarchive`, { method: 'POST' })
+}
+
+/**
  * @typedef {{employeeId: number, name: string, username: string, title: string|null, role: string}} Person
  */
 

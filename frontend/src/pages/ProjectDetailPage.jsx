@@ -2,7 +2,13 @@ import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
-import { getProject, getProjectBudget, getProjectMilestones } from '../services/projectService'
+import {
+  archiveProject,
+  getProject,
+  getProjectBudget,
+  getProjectMilestones,
+  unarchiveProject,
+} from '../services/projectService'
 import BudgetCard from '../components/BudgetCard'
 import EmployeeChips from '../components/EmployeeChips'
 import MilestoneList from '../components/MilestoneList'
@@ -34,6 +40,26 @@ export default function ProjectDetailPage() {
   )
   const { data, error, loading, reload } = useApiData(loadProject)
   const [addingMilestone, setAddingMilestone] = useState(false)
+  const [archiving, setArchiving] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
+
+  const toggleArchive = async (project) => {
+    const archived = Boolean(project.archivedAt)
+    const question = archived
+      ? `Restore "${project.title}"? Employees will see it again and it will count towards progress.`
+      : `Archive "${project.title}"? Employees will no longer see it and it won't count towards progress.`
+    if (!window.confirm(question)) return
+    setArchiving(true)
+    setArchiveError('')
+    try {
+      await (archived ? unarchiveProject(project.projectId) : archiveProject(project.projectId))
+      reload()
+    } catch (err) {
+      setArchiveError(err.message)
+    } finally {
+      setArchiving(false)
+    }
+  }
 
   if (loading) return <Loading label="Loading project…" />
   if (error) return <ErrorMessage error={error} onRetry={reload} />
@@ -49,7 +75,23 @@ export default function ProjectDetailPage() {
       <div className="page-title">
         <h1>{project.title}</h1>
         <span className={`status-badge status-${status.toLowerCase()}`}>{status}</span>
+        {canSeeBudget && (
+          <button type="button" className="secondary archive-button" onClick={() => toggleArchive(project)} disabled={archiving}>
+            {archiving ? 'Saving…' : project.archivedAt ? 'Restore project' : 'Archive project'}
+          </button>
+        )}
       </div>
+      {archiveError && (
+        <div className="alert" role="alert">
+          {archiveError}
+        </div>
+      )}
+      {project.archivedAt && (
+        <p className="notice-muted">
+          Archived {formatDate(project.archivedAt)}. Employees can&apos;t see this project; it doesn&apos;t count
+          towards progress, but its hours still count in the budget.
+        </p>
+      )}
 
       <dl className="card details">
         <div>

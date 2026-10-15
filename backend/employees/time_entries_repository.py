@@ -44,24 +44,29 @@ class TimeEntryRepository:
             return cur.fetchone()
 
     def find_assignments(self, employee_id: int) -> list[dict]:
-        """Return the milestones (with their project) the employee is assigned to; may be empty."""
+        """Return the active milestones (with their project) the employee is assigned to; may be empty."""
         with self._get_connection().cursor() as cur:
             cur.execute(
                 "SELECT m.id AS milestone_id, m.title AS milestone_name, p.id AS project_id, p.title AS project_title "
                 "FROM employee_milestones em "
                 "JOIN milestones m ON m.id = em.milestone_id "
                 "JOIN projects p ON p.id = m.project_id "
-                "WHERE em.employee_id = %s "
+                "WHERE em.employee_id = %s AND m.archived_at IS NULL AND p.archived_at IS NULL "
                 "ORDER BY p.title, m.start_date NULLS LAST, m.title",
                 (employee_id,),
             )
             return cur.fetchall()
 
     def is_assigned(self, employee_id: int, milestone_id: int) -> bool:
-        """Return True if the employee is assigned to the milestone."""
+        """Return True if the employee is assigned to the milestone and neither it nor its project is archived."""
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT EXISTS (SELECT 1 FROM employee_milestones WHERE employee_id = %s AND milestone_id = %s) AS ok",
+                "SELECT EXISTS ("
+                "  SELECT 1 FROM employee_milestones em"
+                "  JOIN milestones m ON m.id = em.milestone_id JOIN projects p ON p.id = m.project_id"
+                "  WHERE em.employee_id = %s AND em.milestone_id = %s"
+                "    AND m.archived_at IS NULL AND p.archived_at IS NULL"
+                ") AS ok",
                 (employee_id, milestone_id),
             )
             return cur.fetchone()["ok"]
