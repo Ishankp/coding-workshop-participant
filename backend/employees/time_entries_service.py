@@ -2,9 +2,9 @@
 Time entry service: business rules for an employee's time log.
 
 Who can do what with employee E's log:
-  - E themselves: view it and add to it (never remove entries)
-  - E's direct manager (role manager): view, add and remove
-  - admins: view, add and remove, for anyone
+  - E themselves: view it and add to it (never change or remove entries)
+  - E's direct manager (role manager): view, add, change and remove
+  - admins: view, add, change and remove, for anyone
 Everyone else gets 403, including teammates. Every entry records who logged
 it and their role, so hours a manager adds on E's behalf are visibly marked.
 Hours can only be logged on milestones E is assigned to, and not for days in
@@ -108,6 +108,34 @@ class TimeEntryService:
             raise ValidationError("Invalid time entry", fields)
 
         entry_id = self._entries.insert_entry(employee_id, milestone_id, work_date, hours, note, user.id)
+        return _entry(self._entries.find_entry(entry_id, employee_id), employee["user_id"])
+
+    def update_entry(  # pylint: disable=too-many-arguments
+        self, user: CurrentUser, employee_id: int, entry_id: int, milestone_id: int, work_date: date,
+        hours: Decimal, note: str | None,
+    ) -> dict:
+        """
+        Change an entry in an employee's log and return it.
+
+        Raises:
+            NotFoundError: no such employee, or no such entry in their log.
+            ForbiddenError: viewer isn't the employee's manager or an admin.
+            ValidationError: future date, or the employee isn't assigned to the milestone.
+        """
+        employee, access = self._load(user, employee_id)
+        if not access.can_delete:
+            raise ForbiddenError("Only the employee's manager or an admin can change time entries")
+
+        fields = {}
+        if work_date > self._today():
+            fields["workDate"] = "Cannot be in the future"
+        if not self._entries.is_assigned(employee_id, milestone_id):
+            fields["milestoneId"] = "Employee is not assigned to this milestone"
+        if fields:
+            raise ValidationError("Invalid time entry", fields)
+
+        if not self._entries.update_entry(entry_id, employee_id, milestone_id, work_date, hours, note):
+            raise NotFoundError(f"Time entry {entry_id} not found")
         return _entry(self._entries.find_entry(entry_id, employee_id), employee["user_id"])
 
     def delete_entry(self, user: CurrentUser, employee_id: int, entry_id: int) -> None:

@@ -22,9 +22,30 @@ class MilestoneRepository:
         with self._get_connection().cursor() as cur:
             cur.execute(
                 "SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.end_date, m.completed_at, "
-                "       m.archived_at, p.archived_at AS project_archived_at "
+                "       m.archived_at, p.archived_at AS project_archived_at, "
+                "       p.start_date AS project_start_date, p.end_date AS project_end_date "
                 "FROM milestones m JOIN projects p ON p.id = m.project_id WHERE m.id = %s",
                 (milestone_id,),
+            )
+            return cur.fetchone()
+
+    def set_completed(self, milestone_id: int, completed: bool) -> dict:
+        """Mark a milestone complete or reopen it; return {id, title, completed_at}."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE milestones SET completed_at = CASE WHEN %s THEN COALESCE(completed_at, now()) ELSE NULL END "
+                "WHERE id = %s RETURNING id, title, completed_at",
+                (completed, milestone_id),
+            )
+            return cur.fetchone()
+
+    def update_milestone(self, milestone_id: int, title: str, description, start_date, end_date) -> dict:
+        """Change a milestone's title, description and dates; return its row."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE milestones SET title = %s, description = %s, start_date = %s, end_date = %s WHERE id = %s "
+                "RETURNING id, project_id, title, description, start_date, end_date, completed_at, archived_at",
+                (title, description, start_date, end_date, milestone_id),
             )
             return cur.fetchone()
 

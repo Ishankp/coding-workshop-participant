@@ -18,9 +18,10 @@ from typing import Callable
 
 from repository import MilestoneRepository
 from shared.dependencies import dependency_view, would_create_cycle
-from shared.errors import ForbiddenError, NotFoundError, ValidationError
+from shared.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from shared.timeline import full_name
 from shared.tokens import CurrentUser
+from shared.validation import milestone_date_errors
 
 
 class MilestoneService:
@@ -36,7 +37,7 @@ class MilestoneService:
 
         Returns:
             dict: {milestoneId, projectId, name, description, startDate, endDate, completedAt,
-                   archivedAt, projectArchivedAt,
+                   archivedAt, projectArchivedAt, projectStartDate, projectEndDate,
                    dependsOn: [{milestoneId, name, completed, alert}],
                    requiredBy: [{milestoneId, name}],
                    totalHours,
@@ -63,6 +64,8 @@ class MilestoneService:
             "completedAt": milestone["completed_at"],
             "archivedAt": milestone["archived_at"],
             "projectArchivedAt": milestone["project_archived_at"],
+            "projectStartDate": milestone["project_start_date"],
+            "projectEndDate": milestone["project_end_date"],
             "dependsOn": [
                 {
                     "milestoneId": view["dependsOnMilestoneId"],
@@ -136,6 +139,78 @@ class MilestoneService:
             "milestoneName": milestone["title"],
             "dependsOnMilestoneId": prerequisite["id"],
             "dependsOnName": prerequisite["title"],
+        }
+
+    def set_completed(self, user: CurrentUser, milestone_id: int, completed: bool) -> dict:
+        """
+        Mark a milestone complete, or reopen it.
+
+        Returns:
+            dict: {milestoneId, name, completedAt}
+
+        Raises:
+            NotFoundError: no such milestone.
+            ForbiddenError: not an admin or a manager who is a member of the project.
+            ConflictError: completing an archived milestone (restore it first).
+        """
+        milestone = self._load_visible_milestone(user, milestone_id)
+        self._require_manager(user, milestone["project_id"])
+        if completed and milestone["archived_at"]:
+            raise ConflictError(f"{milestone['title']} is archived; restore it before marking it complete")
+        row = self._repository.set_completed(milestone_id, completed)
+        return {"milestoneId": row["id"], "name": row["title"], "completedAt": row["completed_at"]}
+
+    def update_milestone(  # pylint: disable=too-many-arguments
+        self, user: CurrentUser, milestone_id: int, title: str, description: str | None,
+        start_date: date | None, end_date: date | None,
+    ) -> dict:
+        """
+        Change a milestone's title, description and dates.
+
+        Dates must stay inside the project, and a new start date can't break a
+        dependency: this milestone can't start before one it depends on, and a
+        milestone that depends on this one can't be left starting before it.
+
+        Returns:
+            dict: {milestoneId, projectId, name, description, startDate, endDate, completedAt, archivedAt}
+
+        Raises:
+            NotFoundError: no such milestone.
+            ForbiddenError: not an admin or a manager who is a member of the project.
+            ValidationError: a date rule is broken (field errors say which).
+        """
+        milestone = self._load_visible_milestone(user, milestone_id)
+        self._require_manager(user, milestone["project_id"])
+
+        project = {"start_date": milestone["project_start_date"], "end_date": milestone["project_end_date"]}
+        errors = milestone_date_errors(project, start_date, end_date)
+        if start_date and "startDate" not in errors:
+            for r in self._repository.find_project_dependencies(milestone["project_id"]):
+                if r["milestone_id"] == milestone_id and r["depends_on_start_date"] and start_date < r["depends_on_start_date"]:
+                    errors["startDate"] = (
+                        f"Can't start before {r['depends_on_name']} ({r['depends_on_start_date'].isoformat()}), "
+                        "which it depends on"
+                    )
+                    break
+                if r["depends_on_milestone_id"] == milestone_id and r["milestone_start_date"] and r["milestone_start_date"] < start_date:
+                    errors["startDate"] = (
+                        f"{r['milestone_name']} depends on this milestone and starts on "
+                        f"{r['milestone_start_date'].isoformat()}"
+                    )
+                    break
+        if errors:
+            raise ValidationError("Invalid milestone dates", errors)
+
+        row = self._repository.update_milestone(milestone_id, title, description, start_date, end_date)
+        return {
+            "milestoneId": row["id"],
+            "projectId": row["project_id"],
+            "name": row["title"],
+            "description": row["description"],
+            "startDate": row["start_date"],
+            "endDate": row["end_date"],
+            "completedAt": row["completed_at"],
+            "archivedAt": row["archived_at"],
         }
 
     def set_archived(self, user: CurrentUser, milestone_id: int, archived: bool) -> dict:

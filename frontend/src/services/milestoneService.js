@@ -6,6 +6,7 @@ import { apiRequest } from './api'
  * @returns {Promise<{milestoneId: number, projectId: number, name: string, description: string|null,
  *   startDate: string|null, endDate: string|null, completedAt: string|null,
  *   archivedAt: string|null, projectArchivedAt: string|null,
+ *   projectStartDate: string|null, projectEndDate: string|null,
  *   dependsOn: Array<{milestoneId: number, name: string, completed: boolean, alert: string|null}>,
  *   requiredBy: Array<{milestoneId: number, name: string}>,
  *   totalHours: number, hoursByEmployee: Array<{employeeId: number, name: string, hours: number}>,
@@ -15,6 +16,36 @@ import { apiRequest } from './api'
  */
 export function getMilestone(milestoneId) {
   return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}`)
+}
+
+/**
+ * Edit a milestone's title, description and dates (managers who are members, and admins).
+ * PUT /api/milestones/{milestoneId}
+ * @param {number|string} milestoneId
+ * @param {{title: string, description: string|null, startDate: string|null, endDate: string|null}} data
+ * @returns {Promise<{milestoneId: number, projectId: number, name: string, description: string|null,
+ *   startDate: string|null, endDate: string|null, completedAt: string|null, archivedAt: string|null}>}
+ */
+export function updateMilestone(milestoneId, data) {
+  return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}`, { method: 'PUT', body: data })
+}
+
+/**
+ * Mark a milestone complete (managers who are members, and admins). POST /api/milestones/{milestoneId}/complete
+ * @param {number|string} milestoneId
+ * @returns {Promise<{milestoneId: number, name: string, completedAt: string}>}
+ */
+export function completeMilestone(milestoneId) {
+  return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}/complete`, { method: 'POST' })
+}
+
+/**
+ * Reopen a completed milestone. POST /api/milestones/{milestoneId}/reopen
+ * @param {number|string} milestoneId
+ * @returns {Promise<{milestoneId: number, name: string, completedAt: null}>}
+ */
+export function reopenMilestone(milestoneId) {
+  return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}/reopen`, { method: 'POST' })
 }
 
 /**

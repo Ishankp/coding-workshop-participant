@@ -10,6 +10,7 @@ Wires the layers together and registers the routes:
 
     Creating (managers and admins; milestones need project membership for managers):
     POST   /                                                           Create a project
+    PUT    /{project_id}                                               Edit its title, dates and budget
     POST   /{project_id}/milestones                                    Add a milestone to it
     POST   /{project_id}/archive, /{project_id}/unarchive              Hide from employees and progress / restore
 
@@ -46,6 +47,7 @@ _authoring = AuthoringController(AuthoringService(_repository))
 router = Router()
 router.add("GET", "/", _controller.list_projects)
 router.add("POST", "/", _authoring.create_project)
+router.add("PUT", "/{project_id}", _authoring.update_project)
 router.add("POST", "/{project_id}/milestones", _authoring.create_milestone)
 router.add("POST", "/{project_id}/archive", _authoring.archive_project)
 router.add("POST", "/{project_id}/unarchive", _authoring.unarchive_project)

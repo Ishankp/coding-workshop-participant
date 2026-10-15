@@ -21,7 +21,7 @@ import function
 from controller import MilestoneController
 from service import MilestoneService
 from shared import tokens
-from shared.errors import ForbiddenError, NotFoundError
+from shared.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from shared.http_utils import Router
 from shared.tokens import CurrentUser
 
@@ -30,7 +30,8 @@ OUTSIDER = CurrentUser(id=99, role="manager")
 ADMIN = CurrentUser(id=1, role="admin")
 MILESTONE = {"id": 5, "project_id": 2, "title": "Migration", "description": "Move data",
              "start_date": None, "end_date": None, "completed_at": None,
-             "archived_at": None, "project_archived_at": None}
+             "archived_at": None, "project_archived_at": None,
+             "project_start_date": date(2026, 9, 1), "project_end_date": date(2027, 3, 31)}
 MANAGER = CurrentUser(id=10, role="manager")   # same person as MEMBER, as a manager
 
 
@@ -67,6 +68,14 @@ class FakeMilestoneRepository:
         self.milestone["archived_at"] = datetime(2026, 10, 14) if archived else None
         return {"id": 5, "title": "Migration", "archived_at": self.milestone["archived_at"]}
 
+    def set_completed(self, milestone_id, completed):
+        self.milestone["completed_at"] = datetime(2026, 10, 14, 15) if completed else None
+        return {"id": 5, "title": "Migration", "completed_at": self.milestone["completed_at"]}
+
+    def update_milestone(self, milestone_id, title, description, start_date, end_date):
+        self.milestone.update({"title": title, "description": description, "start_date": start_date, "end_date": end_date})
+        return dict(self.milestone)
+
     def is_project_member(self, project_id, user_id):
         return project_id == 2 and user_id == MEMBER.id
 
@@ -85,6 +94,66 @@ def fixture_repo():
 @pytest.fixture(name="service")
 def fixture_service(repo):
     return MilestoneService(repo)
+
+
+# Completing
+
+def test_manager_completes_and_reopens(service, repo):
+    assert service.set_completed(MANAGER, 5, True)["completedAt"] == datetime(2026, 10, 14, 15)
+    assert repo.milestone["completed_at"] is not None
+    assert service.set_completed(MANAGER, 5, False)["completedAt"] is None
+
+
+def test_completing_archived_milestone_is_refused(service, repo):
+    repo.milestone["archived_at"] = datetime(2026, 10, 1)
+    with pytest.raises(ConflictError, match="restore it before"):
+        service.set_completed(MANAGER, 5, True)
+
+
+@pytest.mark.parametrize("user", [MEMBER, OUTSIDER])
+def test_employees_and_non_members_cannot_complete(service, repo, user):
+    with pytest.raises(ForbiddenError):
+        service.set_completed(user, 5, True)
+    assert repo.milestone["completed_at"] is None
+
+
+# Editing
+
+def test_manager_edits_milestone(service, repo):
+    result = service.update_milestone(MANAGER, 5, "Migration v2", None, date(2026, 10, 1), date(2026, 12, 1))
+    assert result["name"] == "Migration v2" and result["startDate"] == date(2026, 10, 1)
+    assert repo.milestone["description"] is None
+
+
+def test_edit_keeps_milestone_inside_project(service):
+    with pytest.raises(ValidationError) as exc:
+        service.update_milestone(MANAGER, 5, "Migration", None, date(2026, 8, 1), date(2027, 4, 30))
+    assert set(exc.value.fields) == {"startDate", "endDate"}
+
+
+def test_edit_cannot_start_before_a_prerequisite(service, repo):
+    repo.find_project_dependencies = lambda project_id: [{
+        "milestone_id": 5, "milestone_name": "Migration", "milestone_start_date": None,
+        "depends_on_milestone_id": 4, "depends_on_name": "Mapping", "depends_on_start_date": date(2026, 10, 1),
+        "depends_on_end_date": date(2026, 11, 30), "depends_on_completed_at": None}]
+    with pytest.raises(ValidationError) as exc:
+        service.update_milestone(MANAGER, 5, "Migration", None, date(2026, 9, 15), None)
+    assert exc.value.fields == {"startDate": "Can't start before Mapping (2026-10-01), which it depends on"}
+
+
+def test_edit_cannot_leave_a_dependent_starting_earlier(service, repo):
+    repo.find_project_dependencies = lambda project_id: [{
+        "milestone_id": 9, "milestone_name": "Cutover", "milestone_start_date": date(2026, 12, 1),
+        "depends_on_milestone_id": 5, "depends_on_name": "Migration", "depends_on_start_date": None,
+        "depends_on_end_date": None, "depends_on_completed_at": None}]
+    with pytest.raises(ValidationError) as exc:
+        service.update_milestone(MANAGER, 5, "Migration", None, date(2026, 12, 15), None)
+    assert exc.value.fields == {"startDate": "Cutover depends on this milestone and starts on 2026-12-01"}
+
+
+def test_employee_cannot_edit_milestone(service):
+    with pytest.raises(ForbiddenError):
+        service.update_milestone(MEMBER, 5, "X", None, None, None)
 
 
 # Archiving
@@ -167,6 +236,9 @@ def fixture_handler(monkeypatch, service):
     router = Router()
     controller = MilestoneController(service)
     router.add("GET", "/{milestone_id}", controller.get_milestone)
+    router.add("PUT", "/{milestone_id}", controller.update_milestone)
+    router.add("POST", "/{milestone_id}/complete", controller.complete_milestone)
+    router.add("POST", "/{milestone_id}/reopen", controller.reopen_milestone)
     router.add("POST", "/{milestone_id}/archive", controller.archive_milestone)
     router.add("POST", "/{milestone_id}/unarchive", controller.unarchive_milestone)
     monkeypatch.setattr(function, "router", router)
@@ -189,7 +261,11 @@ def get(path, user=None, method="GET"):
     (get("/5/archive", MANAGER, "POST"), 200),
     (get("/5/archive", MEMBER, "POST"), 403),
     (get("/404/unarchive", ADMIN, "POST"), 404),
+    (get("/5/complete", MANAGER, "POST"), 200),
+    (get("/5/reopen", MANAGER, "POST"), 200),
+    (get("/5/complete", MEMBER, "POST"), 403),
 ])
+
 def test_handler_statuses(handler, event, status):
     assert handler(event)["statusCode"] == status
 
@@ -197,3 +273,13 @@ def test_handler_statuses(handler, event, status):
 def test_handler_body(handler):
     body = json.loads(handler(get("/5", MEMBER))["body"])
     assert body["milestoneId"] == 5 and body["projectId"] == 2
+
+
+def test_handler_edit_milestone_validates_body(handler):
+    ev = get("/5", MANAGER, "PUT")
+    ev["body"] = json.dumps({"title": "Migration v2", "startDate": "2026-10-01", "endDate": "2026-12-01"})
+    assert handler(ev)["statusCode"] == 200
+    ev["body"] = json.dumps({"title": "", "endDate": "bad"})
+    response = handler(ev)
+    assert response["statusCode"] == 400
+    assert set(json.loads(response["body"])["error"]["fields"]) == {"title", "endDate"}

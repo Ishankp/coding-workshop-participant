@@ -1,9 +1,17 @@
 import { useState } from 'react'
 import PropTypes from 'prop-types'
 import { createMilestone } from '../services/projectService'
+import { updateMilestone } from '../services/milestoneService'
 import { formatDate } from '../utils/format'
 
 const EMPTY = { title: '', description: '', startDate: '', endDate: '' }
+
+const fromMilestone = (m) => ({
+  title: m.name,
+  description: m.description ?? '',
+  startDate: m.startDate ?? '',
+  endDate: m.endDate ?? '',
+})
 
 function validate(form, project) {
   const errors = {}
@@ -21,11 +29,12 @@ function validate(form, project) {
 }
 
 /**
- * Inline form to add a milestone to a project (managers who are members, and admins).
- * Dates are limited to the project's dates. `onCreated` and `onCancel` close the form.
+ * Inline form to add a milestone to a project, or edit one when `milestone` is given
+ * (managers who are members, and admins). Dates are limited to the project's dates.
+ * `onSaved` receives the saved milestone; `onCancel` closes the form.
  */
-export default function NewMilestoneForm({ project, onCreated, onCancel }) {
-  const [form, setForm] = useState(EMPTY)
+export default function MilestoneForm({ project, milestone = null, onSaved, onCancel }) {
+  const [form, setForm] = useState(milestone ? fromMilestone(milestone) : EMPTY)
   const [fieldErrors, setFieldErrors] = useState({})
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -45,13 +54,16 @@ export default function NewMilestoneForm({ project, onCreated, onCancel }) {
 
     setSubmitting(true)
     try {
-      const milestone = await createMilestone(project.projectId, {
+      const data = {
         title: form.title.trim(),
-        ...(form.description.trim() && { description: form.description.trim() }),
-        ...(form.startDate && { startDate: form.startDate }),
-        ...(form.endDate && { endDate: form.endDate }),
-      })
-      onCreated(milestone)
+        description: form.description.trim() || null,
+        startDate: form.startDate || null,
+        endDate: form.endDate || null,
+      }
+      const saved = milestone
+        ? await updateMilestone(milestone.milestoneId, data)
+        : await createMilestone(project.projectId, data)
+      onSaved(saved)
     } catch (err) {
       setFieldErrors(err.fields ?? {})
       setFormError(err.fields ? '' : err.message)
@@ -90,7 +102,7 @@ export default function NewMilestoneForm({ project, onCreated, onCancel }) {
 
   return (
     <form className="card time-form" onSubmit={handleSubmit} noValidate aria-labelledby="new-milestone-heading">
-      <h2 id="new-milestone-heading">New milestone</h2>
+      <h2 id="new-milestone-heading">{milestone ? 'Edit milestone' : 'New milestone'}</h2>
       {formError && (
         <div className="alert" role="alert">
           {formError}
@@ -105,7 +117,7 @@ export default function NewMilestoneForm({ project, onCreated, onCancel }) {
       {bounds && <p className="muted small">Dates must stay within the project: {bounds}.</p>}
       <div className="form-actions">
         <button type="submit" disabled={submitting}>
-          {submitting ? 'Adding…' : 'Add milestone'}
+          {submitting ? 'Saving…' : milestone ? 'Save changes' : 'Add milestone'}
         </button>
         <button type="button" className="secondary" onClick={onCancel} disabled={submitting}>
           Cancel
@@ -115,12 +127,19 @@ export default function NewMilestoneForm({ project, onCreated, onCancel }) {
   )
 }
 
-NewMilestoneForm.propTypes = {
+MilestoneForm.propTypes = {
   project: PropTypes.shape({
     projectId: PropTypes.number.isRequired,
     startDate: PropTypes.string,
     endDate: PropTypes.string,
   }).isRequired,
-  onCreated: PropTypes.func.isRequired,
+  milestone: PropTypes.shape({
+    milestoneId: PropTypes.number.isRequired,
+    name: PropTypes.string.isRequired,
+    description: PropTypes.string,
+    startDate: PropTypes.string,
+    endDate: PropTypes.string,
+  }),
+  onSaved: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
 }

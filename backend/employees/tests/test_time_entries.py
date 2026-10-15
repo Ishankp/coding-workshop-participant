@@ -99,6 +99,15 @@ class FakeTimeEntryRepository:
         rows = [dict(r) for r in self.rows if r["employee_id"] == employee_id]
         return sorted(rows, key=lambda r: (r["work_date"], r["created_at"], r["id"]), reverse=True)
 
+    def update_entry(self, entry_id, employee_id, milestone_id, work_date, hours, note):  # pylint: disable=too-many-arguments
+        row = next((r for r in self.rows if r["id"] == entry_id and r["employee_id"] == employee_id), None)
+        if row is None:
+            return False
+        milestone = next(a for a in ASSIGNMENTS[employee_id] if a[0] == milestone_id)
+        row.update({"milestone_id": milestone[0], "milestone_name": milestone[1], "project_id": milestone[2],
+                    "project_title": milestone[3], "work_date": work_date, "hours": hours, "note": note})
+        return True
+
     def delete_entry(self, entry_id, employee_id):
         before = len(self.rows)
         self.rows = [r for r in self.rows if not (r["id"] == entry_id and r["employee_id"] == employee_id)]
@@ -206,6 +215,35 @@ def test_add_allows_today(service):
     assert service.add_entry(PRIYA, 3, **valid_entry(work_date=TODAY))["workDate"] == TODAY
 
 
+# Changing
+
+def test_manager_edits_an_entry(service, entries):
+    updated = service.update_entry(MARIA, 3, 1, **valid_entry(hours=Decimal("5"), note="Corrected"))
+    assert updated["entryId"] == 1 and updated["hours"] == Decimal("5") and updated["note"] == "Corrected"
+    assert entries.find_entry(1, 3)["hours"] == Decimal("5")
+
+
+def test_admin_edits_an_entry(service):
+    assert service.update_entry(ADMIN, 3, 1, **valid_entry(milestone_id=6))["milestone"]["name"] == "Beta Release"
+
+
+def test_employee_cannot_edit_own_entries(service, entries):
+    with pytest.raises(ForbiddenError):
+        service.update_entry(PRIYA, 3, 1, **valid_entry(hours=Decimal("1")))
+    assert entries.find_entry(1, 3)["hours"] == Decimal("6.00")
+
+
+def test_edit_validates_like_add(service):
+    with pytest.raises(ValidationError) as exc:
+        service.update_entry(MARIA, 3, 1, **valid_entry(work_date=date(2026, 10, 15), milestone_id=99))
+    assert set(exc.value.fields) == {"workDate", "milestoneId"}
+
+
+def test_edit_missing_entry_is_404(service):
+    with pytest.raises(NotFoundError):
+        service.update_entry(MARIA, 3, 999, **valid_entry())
+
+
 # Removing
 
 def test_employee_cannot_remove_own_entries(service):
@@ -265,6 +303,7 @@ def fixture_handler(monkeypatch, service):
     router = Router()
     router.add("GET", "/{employee_id}/time-entries", controller.get_log)
     router.add("POST", "/{employee_id}/time-entries", controller.add_entry)
+    router.add("PUT", "/{employee_id}/time-entries/{entry_id}", controller.update_entry)
     router.add("DELETE", "/{employee_id}/time-entries/{entry_id}", controller.delete_entry)
     monkeypatch.setattr(function, "router", router)
     return function.handler
@@ -307,6 +346,10 @@ def test_handler_delete_returns_204_without_body(handler):
     (event("DELETE", "/3/time-entries/abc", MARIA), 400),
     (event("DELETE", "/3/time-entries/999", MARIA), 404),
     (event("PUT", "/3/time-entries", MARIA, VALID_BODY), 405),
+    (event("PUT", "/3/time-entries/1", MARIA, VALID_BODY), 200),
+    (event("PUT", "/3/time-entries/1", PRIYA, VALID_BODY), 403),
+    (event("PUT", "/3/time-entries/1", MARIA, {}), 400),
+    (event("PUT", "/3/time-entries/999", MARIA, VALID_BODY), 404),
 ])
 def test_handler_statuses(handler, ev, status):
     assert handler(ev)["statusCode"] == status

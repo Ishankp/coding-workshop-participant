@@ -84,6 +84,18 @@ class TimeEntryRepository:
             )
             return cur.fetchone()["id"]
 
+    def update_entry(  # pylint: disable=too-many-arguments
+        self, entry_id: int, employee_id: int, milestone_id: int, work_date: date, hours: Decimal, note: str | None,
+    ) -> bool:
+        """Change one of the employee's entries; return whether it existed."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE time_entries SET milestone_id = %s, work_date = %s, hours = %s, note = %s "
+                "WHERE id = %s AND employee_id = %s",
+                (milestone_id, work_date, hours, note, entry_id, employee_id),
+            )
+            return cur.rowcount == 1
+
     def delete_entry(self, entry_id: int, employee_id: int) -> bool:
         """Delete one of the employee's entries; return whether it existed."""
         with self._get_connection().cursor() as cur:

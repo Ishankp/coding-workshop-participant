@@ -1,8 +1,15 @@
 import { useState } from 'react'
 import PropTypes from 'prop-types'
-import { createProject } from '../services/projectService'
+import { createProject, updateProject } from '../services/projectService'
 
 const EMPTY = { title: '', startDate: '', endDate: '', budget: '' }
+
+const fromProject = (project) => ({
+  title: project.title,
+  startDate: project.startDate ?? '',
+  endDate: project.endDate ?? '',
+  budget: project.budget === null || project.budget === undefined ? '' : String(project.budget),
+})
 
 function validate(form) {
   const errors = {}
@@ -13,11 +20,11 @@ function validate(form) {
 }
 
 /**
- * Inline form to create a project (managers and admins).
- * `onCreated` receives the new project; `onCancel` closes the form.
+ * Inline form to create a project, or edit one when `project` is given (managers and admins).
+ * `onSaved` receives the saved project; `onCancel` closes the form.
  */
-export default function NewProjectForm({ onCreated, onCancel }) {
-  const [form, setForm] = useState(EMPTY)
+export default function ProjectForm({ project = null, onSaved, onCancel }) {
+  const [form, setForm] = useState(project ? fromProject(project) : EMPTY)
   const [fieldErrors, setFieldErrors] = useState({})
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -37,13 +44,14 @@ export default function NewProjectForm({ onCreated, onCancel }) {
 
     setSubmitting(true)
     try {
-      const project = await createProject({
+      const data = {
         title: form.title.trim(),
-        ...(form.startDate && { startDate: form.startDate }),
-        ...(form.endDate && { endDate: form.endDate }),
-        ...(form.budget !== '' && { budget: Number(form.budget) }),
-      })
-      onCreated(project)
+        startDate: form.startDate || null,
+        endDate: form.endDate || null,
+        budget: form.budget === '' ? null : Number(form.budget),
+      }
+      const saved = project ? await updateProject(project.projectId, data) : await createProject(data)
+      onSaved(saved)
     } catch (err) {
       setFieldErrors(err.fields ?? {})
       setFormError(err.fields ? '' : err.message)
@@ -78,7 +86,7 @@ export default function NewProjectForm({ onCreated, onCancel }) {
 
   return (
     <form className="card time-form" onSubmit={handleSubmit} noValidate aria-labelledby="new-project-heading">
-      <h2 id="new-project-heading">New project</h2>
+      <h2 id="new-project-heading">{project ? 'Edit project' : 'New project'}</h2>
       {formError && (
         <div className="alert" role="alert">
           {formError}
@@ -92,7 +100,7 @@ export default function NewProjectForm({ onCreated, onCancel }) {
       </div>
       <div className="form-actions">
         <button type="submit" disabled={submitting}>
-          {submitting ? 'Creating…' : 'Create project'}
+          {submitting ? 'Saving…' : project ? 'Save changes' : 'Create project'}
         </button>
         <button type="button" className="secondary" onClick={onCancel} disabled={submitting}>
           Cancel
@@ -102,7 +110,14 @@ export default function NewProjectForm({ onCreated, onCancel }) {
   )
 }
 
-NewProjectForm.propTypes = {
-  onCreated: PropTypes.func.isRequired,
+ProjectForm.propTypes = {
+  project: PropTypes.shape({
+    projectId: PropTypes.number.isRequired,
+    title: PropTypes.string.isRequired,
+    startDate: PropTypes.string,
+    endDate: PropTypes.string,
+    budget: PropTypes.number,
+  }),
+  onSaved: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
 }

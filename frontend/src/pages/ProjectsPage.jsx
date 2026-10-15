@@ -4,7 +4,7 @@ import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
 import { useSearchQuery } from '../hooks/useSearchQuery'
 import { listProjects } from '../services/projectService'
-import NewProjectForm from '../components/NewProjectForm'
+import ProjectForm from '../components/ProjectForm'
 import SearchBar from '../components/SearchBar'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
 import CompletionBar from '../components/CompletionBar'
@@ -36,10 +36,7 @@ export default function ProjectsPage() {
       </div>
       <p className="muted">{isAdmin ? 'All projects (admin view)' : 'Projects you\'re a member of'}</p>
       {creating && (
-        <NewProjectForm
-          onCreated={(project) => navigate(`/projects/${project.projectId}`)}
-          onCancel={() => setCreating(false)}
-        />
+        <ProjectForm onSaved={(project) => navigate(`/projects/${project.projectId}`)} onCancel={() => setCreating(false)} />
       )}
       <SearchBar
         value={query}

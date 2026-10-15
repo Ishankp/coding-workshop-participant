@@ -83,6 +83,18 @@ class TimeEntryController:
         data = _parse_entry(request.json())
         return json_response(201, self._service.add_entry(user, employee_id, **data))
 
+    def update_entry(self, request: Request) -> dict:
+        """
+        PUT /employees/{employeeId}/time-entries/{entryId}
+        body: {"milestoneId": int, "workDate": "YYYY-MM-DD", "hours": number, "note"?: str}
+        -> 200 entry | 400 | 401 | 403 | 404
+        """
+        user = require_user(request)
+        employee_id = request.id_param("employee_id", "employeeId")
+        entry_id = request.id_param("entry_id", "entryId")
+        data = _parse_entry(request.json())
+        return json_response(200, self._service.update_entry(user, employee_id, entry_id, **data))
+
     def delete_entry(self, request: Request) -> dict:
         """DELETE /employees/{employeeId}/time-entries/{entryId} -> 204 | 400 | 401 | 403 | 404"""
         user = require_user(request)

@@ -58,6 +58,21 @@ export function addTimeEntry(employeeId, entry) {
 }
 
 /**
+ * Change an entry in an employee's log (managers and admins only).
+ * PUT /api/employees/{employeeId}/time-entries/{entryId}
+ * @param {number|string} employeeId
+ * @param {number} entryId
+ * @param {{milestoneId: number, workDate: string, hours: number, note?: string}} entry
+ * @returns {Promise<TimeEntry>}
+ */
+export function updateTimeEntry(employeeId, entryId, entry) {
+  return apiRequest(
+    `/api/employees/${encodeURIComponent(employeeId)}/time-entries/${encodeURIComponent(entryId)}`,
+    { method: 'PUT', body: entry },
+  )
+}
+
+/**
  * Remove an entry from an employee's log (managers and admins only).
  * DELETE /api/employees/{employeeId}/time-entries/{entryId}
  * @param {number|string} employeeId

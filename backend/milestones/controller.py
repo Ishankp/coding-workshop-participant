@@ -7,6 +7,7 @@ bodies, calls the service, and builds the response.
 
 from service import MilestoneService
 from shared.errors import ValidationError
+from shared.forms import MAX_DESCRIPTION, parse_optional_date, parse_optional_text, parse_title
 from shared.http_utils import Request, json_response
 from shared.tokens import require_user
 
@@ -34,6 +35,35 @@ class MilestoneController:
         if isinstance(depends_on, bool) or not isinstance(depends_on, int) or depends_on < 1:
             raise ValidationError("Choose a milestone", {"dependsOnMilestoneId": "Choose a milestone"})
         return json_response(201, self._service.add_dependency(user, milestone_id, depends_on))
+
+    def update_milestone(self, request: Request) -> dict:
+        """
+        PUT /milestones/{milestoneId}  body: {title, description?, startDate?, endDate?}
+        -> 200 milestone | 400 | 401 | 403 | 404
+        """
+        user = require_user(request)
+        milestone_id = request.id_param("milestone_id", "milestoneId")
+        body = request.json()
+        fields: dict = {}
+        title = parse_title(body, fields)
+        description = parse_optional_text(body, "description", MAX_DESCRIPTION, fields)
+        start = parse_optional_date(body, "startDate", fields)
+        end = parse_optional_date(body, "endDate", fields)
+        if fields:
+            raise ValidationError("Invalid milestone", fields)
+        return json_response(200, self._service.update_milestone(user, milestone_id, title, description, start, end))
+
+    def complete_milestone(self, request: Request) -> dict:
+        """POST /milestones/{milestoneId}/complete -> 200 {milestoneId, name, completedAt} | 400 | 401 | 403 | 404 | 409"""
+        user = require_user(request)
+        milestone_id = request.id_param("milestone_id", "milestoneId")
+        return json_response(200, self._service.set_completed(user, milestone_id, True))
+
+    def reopen_milestone(self, request: Request) -> dict:
+        """POST /milestones/{milestoneId}/reopen -> 200 {milestoneId, name, completedAt: null} | 400 | 401 | 403 | 404"""
+        user = require_user(request)
+        milestone_id = request.id_param("milestone_id", "milestoneId")
+        return json_response(200, self._service.set_completed(user, milestone_id, False))
 
     def archive_milestone(self, request: Request) -> dict:
         """POST /milestones/{milestoneId}/archive -> 200 {milestoneId, name, archivedAt} | 400 | 401 | 403 | 404"""

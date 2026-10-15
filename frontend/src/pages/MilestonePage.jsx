@@ -2,7 +2,14 @@ import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
-import { archiveMilestone, getMilestone, unarchiveMilestone } from '../services/milestoneService'
+import {
+  archiveMilestone,
+  completeMilestone,
+  getMilestone,
+  reopenMilestone,
+  unarchiveMilestone,
+} from '../services/milestoneService'
+import MilestoneForm from '../components/MilestoneForm'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
 import { formatDate, formatHours } from '../utils/format'
 
@@ -17,6 +24,22 @@ export default function MilestonePage() {
   const canManage = role === 'admin' || role === 'manager'
   const [archiving, setArchiving] = useState(false)
   const [archiveError, setArchiveError] = useState('')
+  const [editing, setEditing] = useState(false)
+
+  const toggleComplete = async () => {
+    const done = Boolean(milestone.completedAt)
+    if (!window.confirm(done ? `Reopen "${milestone.name}"?` : `Mark "${milestone.name}" as complete?`)) return
+    setArchiving(true)
+    setArchiveError('')
+    try {
+      await (done ? reopenMilestone(milestone.milestoneId) : completeMilestone(milestone.milestoneId))
+      reload()
+    } catch (err) {
+      setArchiveError(err.message)
+    } finally {
+      setArchiving(false)
+    }
+  }
 
   const toggleArchive = async () => {
     const archived = Boolean(milestone.archivedAt)
@@ -53,11 +76,34 @@ export default function MilestonePage() {
         )}
         {milestone.archivedAt && <span className="status-badge">Archived {formatDate(milestone.archivedAt)}</span>}
         {canManage && (
-          <button type="button" className="secondary archive-button" onClick={toggleArchive} disabled={archiving}>
-            {archiving ? 'Saving…' : milestone.archivedAt ? 'Restore milestone' : 'Archive milestone'}
-          </button>
+          <span className="header-actions">
+            {!editing && (
+              <button type="button" className="secondary" onClick={() => setEditing(true)} disabled={archiving}>
+                Edit
+              </button>
+            )}
+            {!milestone.archivedAt && (
+              <button type="button" onClick={toggleComplete} disabled={archiving}>
+                {milestone.completedAt ? 'Reopen' : 'Mark complete'}
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={toggleArchive} disabled={archiving}>
+              {archiving ? 'Saving…' : milestone.archivedAt ? 'Restore milestone' : 'Archive milestone'}
+            </button>
+          </span>
         )}
       </div>
+      {editing && (
+        <MilestoneForm
+          project={{ projectId: milestone.projectId, startDate: milestone.projectStartDate, endDate: milestone.projectEndDate }}
+          milestone={milestone}
+          onSaved={() => {
+            setEditing(false)
+            reload()
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
       {archiveError && (
         <div className="alert" role="alert">
           {archiveError}

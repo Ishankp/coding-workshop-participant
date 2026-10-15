@@ -57,6 +57,25 @@ class ProjectRepository:
             )
             return cur.fetchall()
 
+    def update_project(self, project_id: int, title: str, start_date, end_date, budget) -> dict:
+        """Change a project's title, dates and budget; return its row."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE projects SET title = %s, start_date = %s, end_date = %s, budget = %s WHERE id = %s "
+                "RETURNING id, title, start_date, end_date, budget, archived_at, completed_at",
+                (title, start_date, end_date, budget, project_id),
+            )
+            return cur.fetchone()
+
+    def find_all_milestone_dates(self, project_id: int) -> list[dict]:
+        """Return {title, start_date, end_date} for every milestone of the project, archived ones included."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT title, start_date, end_date FROM milestones WHERE project_id = %s ORDER BY start_date NULLS LAST, title",
+                (project_id,),
+            )
+            return cur.fetchall()
+
     def set_project_archived(self, project_id: int, archived: bool) -> dict:
         """Archive or restore a project; return its row."""
         with self._get_connection().cursor() as cur:

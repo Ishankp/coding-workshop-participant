@@ -86,6 +86,18 @@ export function createProject(data) {
 }
 
 /**
+ * Edit a project's title, dates and budget (managers who are members, and admins). The dates can't be
+ * narrowed past an existing milestone. PUT /api/projects/{projectId}
+ * @param {number|string} projectId
+ * @param {{title: string, startDate: string|null, endDate: string|null, budget: number|null}} data
+ * @returns {Promise<{projectId: number, title: string, startDate: string|null, endDate: string|null,
+ *   budget: number|null, archivedAt: string|null, completedAt: string|null}>}
+ */
+export function updateProject(projectId, data) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}`, { method: 'PUT', body: data })
+}
+
+/**
  * Add a milestone to a project (managers who are members, and admins). Dates must fit inside the project.
  * POST /api/projects/{projectId}/milestones
  * @param {number|string} projectId

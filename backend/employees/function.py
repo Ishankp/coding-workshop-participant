@@ -7,6 +7,7 @@ Wires the layers together and registers the routes:
                                                and milestones they're working on
     GET    /{employee_id}/time-entries         The employee's time log (self, their manager, admins)
     POST   /{employee_id}/time-entries         Log hours (self, their manager, admins)
+    PUT    /{employee_id}/time-entries/{id}    Change an entry (their manager, admins)
     DELETE /{employee_id}/time-entries/{id}    Remove an entry (their manager, admins)
 """
 
@@ -35,6 +36,7 @@ router.add("GET", "/", _controller.list_employees)
 router.add("GET", "/{employee_id}", _controller.get_employee)
 router.add("GET", "/{employee_id}/time-entries", _time_entries.get_log)
 router.add("POST", "/{employee_id}/time-entries", _time_entries.add_entry)
+router.add("PUT", "/{employee_id}/time-entries/{entry_id}", _time_entries.update_entry)
 router.add("DELETE", "/{employee_id}/time-entries/{entry_id}", _time_entries.delete_entry)
 
 

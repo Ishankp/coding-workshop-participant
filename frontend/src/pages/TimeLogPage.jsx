@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApiData } from '../hooks/useApiData'
-import { addTimeEntry, deleteTimeEntry, getTimeLog } from '../services/employeeService'
+import { addTimeEntry, deleteTimeEntry, getTimeLog, updateTimeEntry } from '../services/employeeService'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
 import TimeEntryForm from '../components/TimeEntryForm'
 import { formatDate, formatHours } from '../utils/format'
@@ -21,6 +21,7 @@ export default function TimeLogPage() {
   const [entries, setEntries] = useState([])
   const [actionError, setActionError] = useState('')
   const [removingId, setRemovingId] = useState(null)
+  const [editingEntry, setEditingEntry] = useState(null)
   useEffect(() => {
     if (data) setEntries(data.entries)
   }, [data])
@@ -36,6 +37,14 @@ export default function TimeLogPage() {
     setEntries((prev) =>
       [created, ...prev].sort((a, b) => b.workDate.localeCompare(a.workDate) || b.entryId - a.entryId),
     )
+  }
+
+  const sortEntries = (list) => [...list].sort((a, b) => b.workDate.localeCompare(a.workDate) || b.entryId - a.entryId)
+
+  const handleEdit = async (data) => {
+    const saved = await updateTimeEntry(employeeId, editingEntry.entryId, data)
+    setEntries((prev) => sortEntries(prev.map((e) => (e.entryId === saved.entryId ? saved : e))))
+    setEditingEntry(null)
   }
 
   const handleRemove = async (entry) => {
@@ -63,7 +72,17 @@ export default function TimeLogPage() {
         <span className="status-badge">{formatHours(sumHours(entries))} total</span>
       </div>
 
+      {editingEntry && (
+        <TimeEntryForm
+          key={editingEntry.entryId}
+          assignments={assignments}
+          entry={editingEntry}
+          onSubmit={handleEdit}
+          onCancel={() => setEditingEntry(null)}
+        />
+      )}
       {permissions.canAdd &&
+        !editingEntry &&
         (assignments.length > 0 ? (
           <TimeEntryForm assignments={assignments} onSubmit={handleAdd} />
         ) : (
@@ -126,15 +145,29 @@ export default function TimeLogPage() {
                   </td>
                   {permissions.canDelete && (
                     <td className="num">
-                      <button
-                        type="button"
-                        className="secondary small-button"
-                        onClick={() => handleRemove(entry)}
-                        disabled={removingId === entry.entryId}
-                        aria-label={`Remove entry for ${formatDate(entry.workDate)}`}
-                      >
-                        {removingId === entry.entryId ? 'Removing…' : 'Remove'}
-                      </button>
+                      <span className="row-actions">
+                        <button
+                          type="button"
+                          className="secondary small-button"
+                          onClick={() => {
+                            setEditingEntry(entry)
+                            window.scrollTo({ top: 0, behavior: 'smooth' })
+                          }}
+                          disabled={removingId === entry.entryId}
+                          aria-label={`Edit entry for ${formatDate(entry.workDate)}`}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary small-button"
+                          onClick={() => handleRemove(entry)}
+                          disabled={removingId === entry.entryId}
+                          aria-label={`Remove entry for ${formatDate(entry.workDate)}`}
+                        >
+                          {removingId === entry.entryId ? 'Removing…' : 'Remove'}
+                        </button>
+                      </span>
                     </td>
                   )}
                 </tr>

@@ -56,6 +56,42 @@ class AuthoringService:
             "completedAt": project["completed_at"],
         }
 
+    def update_project(  # pylint: disable=too-many-arguments
+        self, user: CurrentUser, project_id: int, title: str, start_date: date | None, end_date: date | None,
+        budget: Decimal | None,
+    ) -> dict:
+        """
+        Change a project's title, dates and budget.
+
+        Raises:
+            NotFoundError: no such project.
+            ForbiddenError: not an admin or a manager who is a member of the project.
+            ValidationError: end before start, or the new dates would leave a milestone outside the project.
+        """
+        self._load_managed_project(user, project_id)
+        errors: dict[str, str] = {}
+        if start_date and end_date and end_date < start_date:
+            errors["endDate"] = "Must be on or after the start date"
+        for m in self._repository.find_all_milestone_dates(project_id):
+            first, last = m["start_date"] or m["end_date"], m["end_date"] or m["start_date"]
+            if start_date and first and first < start_date:
+                errors.setdefault("startDate", f"Milestone \"{m['title']}\" starts on {first.isoformat()}; move it first")
+            if end_date and last and last > end_date:
+                errors.setdefault("endDate", f"Milestone \"{m['title']}\" ends on {last.isoformat()}; move it first")
+        if errors:
+            raise ValidationError("Invalid project dates", errors)
+
+        project = self._repository.update_project(project_id, title, start_date, end_date, budget)
+        return {
+            "projectId": project["id"],
+            "title": project["title"],
+            "startDate": project["start_date"],
+            "endDate": project["end_date"],
+            "budget": project["budget"],
+            "archivedAt": project["archived_at"],
+            "completedAt": project["completed_at"],
+        }
+
     def set_project_archived(self, user: CurrentUser, project_id: int, archived: bool) -> dict:
         """
         Archive (hide from employees and progress) or restore a project.

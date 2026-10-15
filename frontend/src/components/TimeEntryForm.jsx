@@ -16,12 +16,20 @@ function validate(form) {
   return errors
 }
 
+const fromEntry = (entry) => ({
+  milestoneId: String(entry.milestone.milestoneId),
+  workDate: entry.workDate,
+  hours: String(entry.hours),
+  note: entry.note ?? '',
+})
+
 /**
- * Form to log hours on one of the employee's assigned milestones.
- * `onSubmit` receives {milestoneId, workDate, hours, note?} and may reject with an ApiError.
+ * Form to log hours on one of the employee's assigned milestones, or to change an
+ * existing entry when `entry` is given. `onSubmit` receives {milestoneId, workDate,
+ * hours, note?} and may reject with an ApiError; `onCancel` (edit mode) closes the form.
  */
-export default function TimeEntryForm({ assignments, onSubmit }) {
-  const [form, setForm] = useState(EMPTY)
+export default function TimeEntryForm({ assignments, onSubmit, entry = null, onCancel = null }) {
+  const [form, setForm] = useState(entry ? fromEntry(entry) : EMPTY)
   const [fieldErrors, setFieldErrors] = useState({})
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -55,8 +63,8 @@ export default function TimeEntryForm({ assignments, onSubmit }) {
         hours: Number(form.hours),
         ...(form.note.trim() && { note: form.note.trim() }),
       })
-      // Keep the milestone and date so several entries in a row are quick to add
-      setForm((prev) => ({ ...prev, hours: '', note: '' }))
+      // When adding, keep the milestone and date so several entries in a row are quick to add
+      if (!entry) setForm((prev) => ({ ...prev, hours: '', note: '' }))
     } catch (err) {
       setFieldErrors(err.fields ?? {})
       setFormError(err.fields ? '' : err.message)
@@ -69,7 +77,7 @@ export default function TimeEntryForm({ assignments, onSubmit }) {
 
   return (
     <form className="card time-form" onSubmit={handleSubmit} noValidate aria-labelledby="log-hours-heading">
-      <h2 id="log-hours-heading">Log hours</h2>
+      <h2 id="log-hours-heading">{entry ? 'Edit entry' : 'Log hours'}</h2>
       {formError && (
         <div className="alert" role="alert">
           {formError}
@@ -180,9 +188,16 @@ export default function TimeEntryForm({ assignments, onSubmit }) {
         </div>
       </div>
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Saving…' : 'Add entry'}
-      </button>
+      <div className="form-actions">
+        <button type="submit" disabled={submitting}>
+          {submitting ? 'Saving…' : entry ? 'Save changes' : 'Add entry'}
+        </button>
+        {onCancel && (
+          <button type="button" className="secondary" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </button>
+        )}
+      </div>
     </form>
   )
 }
@@ -197,4 +212,12 @@ TimeEntryForm.propTypes = {
     }),
   ).isRequired,
   onSubmit: PropTypes.func.isRequired,
+  entry: PropTypes.shape({
+    entryId: PropTypes.number.isRequired,
+    workDate: PropTypes.string.isRequired,
+    hours: PropTypes.number.isRequired,
+    note: PropTypes.string,
+    milestone: PropTypes.shape({ milestoneId: PropTypes.number.isRequired }).isRequired,
+  }),
+  onCancel: PropTypes.func,
 }

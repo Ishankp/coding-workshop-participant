@@ -15,7 +15,8 @@ import MilestoneList from '../components/MilestoneList'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
 import CompletionBar from '../components/CompletionBar'
 import DependencyList from '../components/DependencyList'
-import NewMilestoneForm from '../components/NewMilestoneForm'
+import MilestoneForm from '../components/MilestoneForm'
+import ProjectForm from '../components/ProjectForm'
 import TeamManager from '../components/TeamManager'
 import { formatCurrency, formatDate, projectStatus } from '../utils/format'
 import { daysLeftText } from '../utils/milestones'
@@ -40,6 +41,7 @@ export default function ProjectDetailPage() {
   )
   const { data, error, loading, reload } = useApiData(loadProject)
   const [addingMilestone, setAddingMilestone] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const [archiveError, setArchiveError] = useState('')
 
@@ -76,11 +78,28 @@ export default function ProjectDetailPage() {
         <h1>{project.title}</h1>
         <span className={`status-badge status-${status.toLowerCase()}`}>{status}</span>
         {canSeeBudget && (
-          <button type="button" className="secondary archive-button" onClick={() => toggleArchive(project)} disabled={archiving}>
-            {archiving ? 'Saving…' : project.archivedAt ? 'Restore project' : 'Archive project'}
-          </button>
+          <span className="header-actions">
+            {!editing && (
+              <button type="button" className="secondary" onClick={() => setEditing(true)}>
+                Edit
+              </button>
+            )}
+            <button type="button" className="secondary" onClick={() => toggleArchive(project)} disabled={archiving}>
+              {archiving ? 'Saving…' : project.archivedAt ? 'Restore project' : 'Archive project'}
+            </button>
+          </span>
         )}
       </div>
+      {editing && (
+        <ProjectForm
+          project={project}
+          onSaved={() => {
+            setEditing(false)
+            reload()
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
       {archiveError && (
         <div className="alert" role="alert">
           {archiveError}
@@ -153,9 +172,9 @@ export default function ProjectDetailPage() {
         collapse or expand it.
       </p>
       {addingMilestone && (
-        <NewMilestoneForm
+        <MilestoneForm
           project={project}
-          onCreated={() => {
+          onSaved={() => {
             setAddingMilestone(false)
             reload()
           }}

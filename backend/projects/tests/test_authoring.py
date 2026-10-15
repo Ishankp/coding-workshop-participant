@@ -69,6 +69,15 @@ class FakeProjectRepository:
     def insert_member(self, project_id, employee_id):
         self.members.setdefault(project_id, set()).add(employee_id)
 
+    def update_project(self, project_id, title, start_date, end_date, budget):
+        row = self.projects[project_id]
+        row.update({"title": title, "start_date": start_date, "end_date": end_date, "budget": budget})
+        return dict(row)
+
+    def find_all_milestone_dates(self, project_id):
+        return [{"title": "Discovery", "start_date": date(2026, 7, 1), "end_date": date(2026, 8, 15)},
+                {"title": "Build", "start_date": date(2026, 10, 16), "end_date": date(2026, 12, 31)}] if project_id == 1 else []
+
     def set_project_archived(self, project_id, archived):
         row = self.projects[project_id]
         row["archived_at"] = date(2026, 10, 14) if archived else None
@@ -145,6 +154,32 @@ def test_milestone_in_unknown_project_is_404(service):
         service.create_milestone(ADMIN, 404, "X", None, None, None)
 
 
+# Editing projects
+
+def test_manager_edits_project(service, repo):
+    project = service.update_project(MANAGER, 1, "Portal v2", date(2026, 6, 1), date(2027, 1, 31), Decimal("15000"))
+    assert project["title"] == "Portal v2" and project["budget"] == Decimal("15000")
+    assert repo.projects[1]["start_date"] == date(2026, 6, 1)
+
+
+def test_project_dates_cannot_strand_a_milestone(service, repo):
+    with pytest.raises(ValidationError) as exc:
+        service.update_project(MANAGER, 1, "Portal", date(2026, 8, 1), date(2026, 12, 1), None)
+    assert exc.value.fields == {"startDate": 'Milestone "Discovery" starts on 2026-07-01; move it first',
+                                "endDate": 'Milestone "Build" ends on 2026-12-31; move it first'}
+    assert repo.projects[1]["start_date"] == date(2026, 7, 1)
+
+
+def test_project_dates_can_be_cleared(service):
+    assert service.update_project(MANAGER, 1, "Portal", None, None, None)["startDate"] is None
+
+
+@pytest.mark.parametrize("user", [EMPLOYEE, OUTSIDER])
+def test_only_project_managers_and_admins_edit(service, user):
+    with pytest.raises(ForbiddenError):
+        service.update_project(user, 1, "X", None, None, None)
+
+
 # Archiving
 
 def test_manager_archives_and_restores_project(service, repo):
@@ -172,6 +207,7 @@ def fixture_handler(monkeypatch, service):
     router = Router()
     router.add("POST", "/", controller.create_project)
     router.add("POST", "/{project_id}/milestones", controller.create_milestone)
+    router.add("PUT", "/{project_id}", controller.update_project)
     router.add("POST", "/{project_id}/archive", controller.archive_project)
     router.add("POST", "/{project_id}/unarchive", controller.unarchive_project)
     monkeypatch.setattr(function, "router", router)
@@ -190,6 +226,15 @@ def test_handler_creates_project(handler):
     assert response["statusCode"] == 201
     body = json.loads(response["body"])
     assert body["title"] == "Intranet" and body["startDate"] == "2027-01-01" and body["budget"] == 5000.5
+
+
+def test_handler_edits_project(handler):
+    ev = post("/api/projects/1", MANAGER, {"title": "Portal v2", "startDate": "2026-06-01", "endDate": "2027-01-31", "budget": 100})
+    ev["requestContext"]["http"]["method"] = "PUT"
+    response = handler(ev)
+    assert response["statusCode"] == 200 and json.loads(response["body"])["title"] == "Portal v2"
+    ev["body"] = json.dumps({"title": "Portal", "startDate": "2026-08-01"})
+    assert handler(ev)["statusCode"] == 400
 
 
 def test_handler_creates_milestone(handler):
