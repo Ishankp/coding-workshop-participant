@@ -138,16 +138,24 @@ Three layers: backend unit tests (pytest), frontend unit/component tests
 against the running app. Coverage targets: backend and frontend 80%+ (both
 enforced), API endpoints and error handling 90%+, critical user paths 100% E2E.
 
-Backend (432 unit tests; no database needed - repositories are replaced by
-in-memory fakes):
+Backend (487 tests: 432 unit tests where repositories are replaced by
+in-memory fakes, plus 55 repository tests that run the real SQL against the
+local PostgreSQL and roll back afterwards):
 
     pip install --user pytest pytest-cov   # once
     ./bin/test-backend.sh                  # all services + one combined coverage
                                            # report; fails under 80% line coverage
 
   Expected: every service prints "N passed" and the combined TOTAL is >= 80%
-  (currently 86%; repositories are the only low files because the SQL is not
-  run). One service at a time:
+  (98% with PostgreSQL reachable, 86% without: the repository tests skip when
+  the database is down, so they also skip in CI). The repository tests need
+  the seed data (section 3); each test runs in a transaction that is always
+  rolled back, so they leave the database untouched. They also prove the
+  schema rules: date bounds, hours 0-24, no self-dependencies, uniqueness,
+  and the milestone-within-project triggers. Set PG_TEST_DSN to use another
+  database. Don't run them at the same time as the E2E tests: their open
+  transactions hold row locks that can stall a browser test. One service at
+  a time:
 
     ./bin/sync-shared.sh               # once, and after editing backend/_shared
     cd backend/projects && python3 -m pytest tests -q
@@ -420,8 +428,8 @@ ENVIRONMENT.config (never commit that file).
 
 11. KNOWN GAPS
 --------------
-  - Backend unit tests do not hit a real database (the SQL in the repository
-    modules is only exercised by running the app and by the E2E tests).
+  - The backend repository tests and the E2E tests need the local PostgreSQL
+    with the seed data; neither runs in CI.
   - The E2E tests need the full local stack running and are not run in CI.
   - After adding someone to a project, the "added to the project" notice never
     shows: the page reloads and remounts the Team card, which clears it.
