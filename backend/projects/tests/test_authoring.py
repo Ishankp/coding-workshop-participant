@@ -321,3 +321,23 @@ def test_handler_validation_names_fields(handler, path, body, bad_fields):
 ])
 def test_handler_statuses(handler, path, user, body, status):
     assert handler(post(path, user, body))["statusCode"] == status
+
+
+# Role boundary: an employee must get 403 on every authoring route, even with a
+# malformed body, i.e. the role check runs before validation and nothing is written.
+@pytest.mark.parametrize("method,path", [
+    ("POST", "/api/projects"),
+    ("PUT", "/api/projects/1"),
+    ("DELETE", "/api/projects/1"),
+    ("POST", "/api/projects/1/milestones"),
+    ("POST", "/api/projects/1/archive"),
+    ("POST", "/api/projects/1/unarchive"),
+])
+def test_employee_is_refused_before_validation_on_every_authoring_route(handler, repo, method, path):
+    before = (len(repo.projects), len(repo.milestones))
+    ev = post(path, EMPLOYEE, {})
+    ev["requestContext"]["http"]["method"] = method
+    response = handler(ev)
+    assert response["statusCode"] == 403
+    assert json.loads(response["body"])["error"]["code"] == "forbidden"
+    assert (len(repo.projects), len(repo.milestones)) == before

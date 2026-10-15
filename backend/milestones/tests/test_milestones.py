@@ -275,6 +275,8 @@ def fixture_handler(monkeypatch, service):
     router.add("POST", "/{milestone_id}/reopen", controller.reopen_milestone)
     router.add("POST", "/{milestone_id}/archive", controller.archive_milestone)
     router.add("POST", "/{milestone_id}/unarchive", controller.unarchive_milestone)
+    router.add("POST", "/{milestone_id}/dependencies", controller.add_dependency)
+    router.add("DELETE", "/{milestone_id}/dependencies/{depends_on_id}", controller.remove_dependency)
     monkeypatch.setattr(function, "router", router)
     return function.handler
 
@@ -319,3 +321,23 @@ def test_handler_edit_milestone_validates_body(handler):
     response = handler(ev)
     assert response["statusCode"] == 400
     assert set(json.loads(response["body"])["error"]["fields"]) == {"title", "endDate"}
+
+
+# Role boundary: a project member who is only an employee gets 403 on every write
+# route, with an empty body, before validation runs.
+@pytest.mark.parametrize("method,path", [
+    ("PUT", "/api/milestones/5"),
+    ("DELETE", "/api/milestones/5"),
+    ("POST", "/api/milestones/5/complete"),
+    ("POST", "/api/milestones/5/reopen"),
+    ("POST", "/api/milestones/5/archive"),
+    ("POST", "/api/milestones/5/unarchive"),
+    ("POST", "/api/milestones/5/dependencies"),
+    ("DELETE", "/api/milestones/5/dependencies/4"),
+])
+def test_employee_is_refused_before_validation_on_every_milestone_write(handler, method, path):
+    ev = get(path, MEMBER, method)
+    ev["body"] = "{}"
+    response = handler(ev)
+    assert response["statusCode"] == 403
+    assert json.loads(response["body"])["error"]["code"] == "forbidden"

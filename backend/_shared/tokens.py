@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 
-from .errors import AppError, AuthenticationError
+from .errors import AppError, AuthenticationError, ForbiddenError
 from .http_utils import Request
 
 TOKEN_TTL = timedelta(hours=1)
@@ -71,3 +71,16 @@ def require_user(request: Request) -> CurrentUser:
         raise AuthenticationError("Not logged in")
     claims = decode_token(token)
     return CurrentUser(id=int(claims["sub"]), role=claims.get("role", ""))
+
+
+def require_role(user: CurrentUser, *roles: str, message: str = "This action needs a manager or admin account") -> None:
+    """
+    Raise 403 unless the user has one of the given roles.
+
+    Controllers call this right after require_user and BEFORE parsing the body,
+    so a user who may never perform the action gets a plain 403 instead of
+    validation hints about a request they are not allowed to make. Services
+    still do the full check (membership, manager pool, admin bypass).
+    """
+    if user.role not in roles:
+        raise ForbiddenError(message)

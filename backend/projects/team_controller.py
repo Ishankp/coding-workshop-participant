@@ -4,7 +4,7 @@ Team controller: HTTP routes for a project's members and milestone assignments.
 
 from shared.errors import ValidationError
 from shared.http_utils import Request, json_response
-from shared.tokens import require_user
+from shared.tokens import require_role, require_user
 from team_service import TeamService
 
 
@@ -30,6 +30,7 @@ class TeamController:
     def add_member(self, request: Request) -> dict:
         """POST /projects/{projectId}/members  body: {"employeeId": int} -> 201 | 400 | 401 | 403 | 404 | 409"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         project_id = request.id_param("project_id", "projectId")
         employee_id = _employee_id(request.json())
         return json_response(201, self._service.add_member(user, project_id, employee_id))
@@ -37,6 +38,7 @@ class TeamController:
     def remove_member(self, request: Request) -> dict:
         """DELETE /projects/{projectId}/members/{employeeId} -> 204 | 400 | 401 | 403 | 404 | 409"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         project_id = request.id_param("project_id", "projectId")
         employee_id = request.id_param("employee_id", "employeeId")
         self._service.remove_member(user, project_id, employee_id)
@@ -48,6 +50,7 @@ class TeamController:
         -> 201 {..., addedToProject} | 400 | 401 | 403 | 404 | 409
         """
         user = require_user(request)
+        require_role(user, "manager", "admin")
         project_id = request.id_param("project_id", "projectId")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         employee_id = _employee_id(request.json())
@@ -56,6 +59,7 @@ class TeamController:
     def unassign_milestone(self, request: Request) -> dict:
         """DELETE /projects/{projectId}/milestones/{milestoneId}/assignees/{employeeId} -> 204 | 400 | 401 | 403 | 404 | 409"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         project_id = request.id_param("project_id", "projectId")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         employee_id = request.id_param("employee_id", "employeeId")

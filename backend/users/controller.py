@@ -10,7 +10,7 @@ from service import ROLES, UserService
 from shared.errors import ValidationError
 from shared.forms import parse_optional_money, parse_optional_text
 from shared.http_utils import Request, json_response
-from shared.tokens import require_user
+from shared.tokens import require_role, require_user
 
 _USERNAME = re.compile(r"^[A-Za-z0-9._-]{3,100}$")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -99,6 +99,7 @@ class UserController:
     def list_users(self, request: Request) -> dict:
         """GET /users -> 200 [account] | 401 | 403"""
         user = require_user(request)
+        require_role(user, "admin", message="Only admins can manage user accounts")
         return json_response(200, self._service.list_users(user))
 
     def create_user(self, request: Request) -> dict:
@@ -107,17 +108,20 @@ class UserController:
         -> 201 {userId, employeeId, username, email, name, role} | 400 | 401 | 403 | 409
         """
         user = require_user(request)
+        require_role(user, "admin", message="Only admins can manage user accounts")
         return json_response(201, self._service.create_user(user, _parse_new_user(request.json())))
 
     def update_user(self, request: Request) -> dict:
         """PUT /users/{userId}  body: {email, role, firstName?, lastName?, title?, salary?} -> 200 | 400 | 401 | 403 | 404 | 409"""
         user = require_user(request)
+        require_role(user, "admin", message="Only admins can manage user accounts")
         user_id = request.id_param("user_id", "userId")
         return json_response(200, self._service.update_user(user, user_id, _parse_update(request.json())))
 
     def set_password(self, request: Request) -> dict:
         """POST /users/{userId}/password  body: {password} -> 204 | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "admin", message="Only admins can manage user accounts")
         user_id = request.id_param("user_id", "userId")
         self._service.set_password(user, user_id, _parse_password(request.json()))
         return json_response(204)
@@ -125,11 +129,13 @@ class UserController:
     def deactivate_user(self, request: Request) -> dict:
         """POST /users/{userId}/deactivate -> 200 {userId, deactivatedAt} | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "admin", message="Only admins can manage user accounts")
         user_id = request.id_param("user_id", "userId")
         return json_response(200, self._service.set_deactivated(user, user_id, True))
 
     def reactivate_user(self, request: Request) -> dict:
         """POST /users/{userId}/reactivate -> 200 {userId, deactivatedAt: null} | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "admin", message="Only admins can manage user accounts")
         user_id = request.id_param("user_id", "userId")
         return json_response(200, self._service.set_deactivated(user, user_id, False))

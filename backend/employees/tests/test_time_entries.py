@@ -353,3 +353,18 @@ def test_handler_delete_returns_204_without_body(handler):
 ])
 def test_handler_statuses(handler, ev, status):
     assert handler(ev)["statusCode"] == status
+
+
+# Role boundary: an employee can never edit or delete entries, not even their own,
+# and gets 403 before the body is validated.
+@pytest.mark.parametrize("method,path", [
+    ("PUT", "/api/employees/3/time-entries/1"),
+    ("DELETE", "/api/employees/3/time-entries/1"),
+    ("PUT", "/api/employees/4/time-entries/1"),
+])
+def test_employee_is_refused_before_validation_on_entry_edits(handler, entries, method, path):
+    before = [dict(r) for r in entries.rows]
+    response = handler(event(method, path, PRIYA, {}))
+    assert response["statusCode"] == 403
+    assert json.loads(response["body"])["error"]["code"] == "forbidden"
+    assert [dict(r) for r in entries.rows] == before

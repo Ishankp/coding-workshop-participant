@@ -308,3 +308,16 @@ def test_handler_assign_reports_added_to_project(handler):
     response = handler(event("POST", "/1/milestones/2/assignees", MANAGER, {"employeeId": 6}))
     assert response["statusCode"] == 201
     assert json.loads(response["body"])["addedToProject"] is True
+
+
+# Role boundary: an employee gets 403 on every team write route before the body is even looked at.
+@pytest.mark.parametrize("method,path", [
+    ("POST", "/api/projects/1/members"),
+    ("DELETE", "/api/projects/1/members/3"),
+    ("POST", "/api/projects/1/milestones/2/assignees"),
+    ("DELETE", "/api/projects/1/milestones/2/assignees/3"),
+])
+def test_employee_is_refused_before_validation_on_every_team_write(handler, method, path):
+    response = handler(event(method, path, EMPLOYEE, {}))
+    assert response["statusCode"] == 403
+    assert json.loads(response["body"])["error"]["code"] == "forbidden"

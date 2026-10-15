@@ -133,12 +133,12 @@ No redeploy is needed afterwards; the running Lambdas read the same database.
 
 6. RUNNING THE TESTS
 --------------------
-Backend (388 unit tests, pytest; no database needed - repositories are replaced
+Backend (432 unit tests, pytest; no database needed - repositories are replaced
 by in-memory fakes):
 
     pip install --user pytest          # once
     ./bin/sync-shared.sh               # once, and after editing backend/_shared
-    for s in auth users projects milestones employees; do
+    for s in auth users projects milestones employees dbsetup; do
       (cd backend/$s && python3 -m pytest tests -q)
     done
 

@@ -10,7 +10,7 @@ from decimal import Decimal
 
 from shared.errors import ValidationError
 from shared.http_utils import Request, json_response
-from shared.tokens import require_user
+from shared.tokens import require_role, require_user
 from time_entries_service import TimeEntryService
 
 _MAX_HOURS = 24
@@ -90,6 +90,7 @@ class TimeEntryController:
         -> 200 entry | 400 | 401 | 403 | 404
         """
         user = require_user(request)
+        require_role(user, "manager", "admin", message="Only the employee's manager or an admin can change time entries")
         employee_id = request.id_param("employee_id", "employeeId")
         entry_id = request.id_param("entry_id", "entryId")
         data = _parse_entry(request.json())
@@ -98,6 +99,7 @@ class TimeEntryController:
     def delete_entry(self, request: Request) -> dict:
         """DELETE /employees/{employeeId}/time-entries/{entryId} -> 204 | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "manager", "admin", message="Only the employee's manager or an admin can change time entries")
         employee_id = request.id_param("employee_id", "employeeId")
         entry_id = request.id_param("entry_id", "entryId")
         self._service.delete_entry(user, employee_id, entry_id)

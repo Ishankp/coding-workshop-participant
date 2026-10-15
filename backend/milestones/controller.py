@@ -9,7 +9,7 @@ from service import MilestoneService
 from shared.errors import ValidationError
 from shared.forms import MAX_DESCRIPTION, parse_optional_date, parse_optional_text, parse_title
 from shared.http_utils import Request, json_response
-from shared.tokens import require_user
+from shared.tokens import require_role, require_user
 
 
 class MilestoneController:
@@ -30,6 +30,7 @@ class MilestoneController:
         -> 201 dependency | 400 | 401 | 403 | 404
         """
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         depends_on = request.json().get("dependsOnMilestoneId")
         if isinstance(depends_on, bool) or not isinstance(depends_on, int) or depends_on < 1:
@@ -42,6 +43,7 @@ class MilestoneController:
         -> 200 milestone | 400 | 401 | 403 | 404
         """
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         body = request.json()
         fields: dict = {}
@@ -56,18 +58,21 @@ class MilestoneController:
     def complete_milestone(self, request: Request) -> dict:
         """POST /milestones/{milestoneId}/complete -> 200 {milestoneId, name, completedAt} | 400 | 401 | 403 | 404 | 409"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         return json_response(200, self._service.set_completed(user, milestone_id, True))
 
     def reopen_milestone(self, request: Request) -> dict:
         """POST /milestones/{milestoneId}/reopen -> 200 {milestoneId, name, completedAt: null} | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         return json_response(200, self._service.set_completed(user, milestone_id, False))
 
     def delete_milestone(self, request: Request) -> dict:
         """DELETE /milestones/{milestoneId} -> 204 | 400 | 401 | 403 | 404 | 409 (admins only)"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         self._service.delete_milestone(user, milestone_id)
         return json_response(204)
@@ -75,18 +80,21 @@ class MilestoneController:
     def archive_milestone(self, request: Request) -> dict:
         """POST /milestones/{milestoneId}/archive -> 200 {milestoneId, name, archivedAt} | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         return json_response(200, self._service.set_archived(user, milestone_id, True))
 
     def unarchive_milestone(self, request: Request) -> dict:
         """POST /milestones/{milestoneId}/unarchive -> 200 {milestoneId, name, archivedAt: null} | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         return json_response(200, self._service.set_archived(user, milestone_id, False))
 
     def remove_dependency(self, request: Request) -> dict:
         """DELETE /milestones/{milestoneId}/dependencies/{dependsOnMilestoneId} -> 204 | 400 | 401 | 403 | 404"""
         user = require_user(request)
+        require_role(user, "manager", "admin")
         milestone_id = request.id_param("milestone_id", "milestoneId")
         depends_on = request.id_param("depends_on_id", "dependsOnMilestoneId")
         self._service.remove_dependency(user, milestone_id, depends_on)

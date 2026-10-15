@@ -334,3 +334,22 @@ def test_handler_create_returns_ids(handler):
     body = json.loads(handler(event("POST", ADMIN, valid_body()))["body"])
     assert body == {"userId": 100, "employeeId": 50, "username": "nina", "email": "nina@example.com",
                     "name": "Nina Okafor", "role": "employee"}
+
+
+# Role boundary: employees and managers get 403 on every account route, with an
+# empty body, before validation runs and before the repository is touched.
+@pytest.mark.parametrize("user", [EMPLOYEE, MANAGER])
+@pytest.mark.parametrize("method,path", [
+    ("GET", "/api/users"),
+    ("POST", "/api/users"),
+    ("PUT", "/api/users/1"),
+    ("POST", "/api/users/1/password"),
+    ("POST", "/api/users/1/deactivate"),
+    ("POST", "/api/users/1/reactivate"),
+])
+def test_non_admins_are_refused_before_validation_on_every_account_route(handler, repo, user, method, path):
+    before = [dict(row) for row in repo.users]
+    response = handler(event(method, user, {}, path=path))
+    assert response["statusCode"] == 403
+    assert json.loads(response["body"])["error"]["message"] == "Only admins can manage user accounts"
+    assert [dict(row) for row in repo.users] == before
