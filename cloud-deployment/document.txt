@@ -30,11 +30,13 @@ Each switch below acts on one of these parts:
 Switching a service "off" means locking its Function URL to IAM-only. Browsers
 and CloudFront are anonymous callers, so they get HTTP 403 while the Lambda,
 its code and its logs stay exactly as they were. Switching it "on" makes the
-URL public again. Both take up to a minute to take effect, so wait before
-re-checking with curl or the browser.
+URL public again. A switch takes about 20 seconds to take effect and can
+flap (a few 403s mixed with 200s) for a minute or two while AWS propagates
+it, so wait before judging the result with curl or the browser.
 
-Disabling CloudFront stops the URL serving anything. It takes a few minutes to
-propagate, both ways.
+Disabling CloudFront stops the URL answering at all (browsers report a
+connection error, not a page). Disabling and re-enabling each take about
+three minutes to propagate; status.sh shows "InProgress" until then.
 
 
 THE SCRIPTS
@@ -137,6 +139,8 @@ NOTES
     ../bin/deploy-backend.sh (directly or via launch-all.sh) puts every
     Function URL back to public and CloudFront back to enabled. That is
     intended: a deploy means "the site should be up".
+    After using the switches, that deploy reports something like
+    "0 added, 6 changed": the six Function URL settings being re-asserted.
   - disable-website.sh leaves the app's JS/CSS in the bucket; only index.html
     is swapped. relaunch.sh website re-uploads everything.
   - status.sh and the disable/relaunch scripts need the backend to have been
