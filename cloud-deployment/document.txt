@@ -1,0 +1,148 @@
+CLOUD DEPLOYMENT SCRIPTS
+========================
+
+Scripts for switching the AWS deployment on and off, in whole or in part,
+without ever deleting data. The underlying deploy scripts live in ../bin/;
+these wrap them and add the on/off switches.
+
+Run everything from the repo root, in a terminal where you have done:
+
+    source ~/.bashrc
+
+(That gives the scripts AWS_REGION, PARTICIPANT_ID and PARTICIPANT_CODE. They
+fetch temporary AWS credentials themselves when the old ones have expired.)
+
+
+WHAT THE SITE IS MADE OF
+------------------------
+Each switch below acts on one of these parts:
+
+  CloudFront      The public URL (https://....cloudfront.net). Everything,
+                  pages and API calls, enters through it.
+  Website files   The built React app in the S3 bucket
+                  coding-workshop-website-<participant id>.
+  Services        One Lambda per API service: auth, users, projects,
+                  milestones, employees (plus dbsetup, which is only used by
+                  the scripts). Each has a Function URL that CloudFront calls.
+  Database        The Aurora cluster. No script here ever deletes it; only
+                  launch-all.sh --reset-db reloads the seed data on purpose.
+
+Switching a service "off" means locking its Function URL to IAM-only. Browsers
+and CloudFront are anonymous callers, so they get HTTP 403 while the Lambda,
+its code and its logs stay exactly as they were. Switching it "on" makes the
+URL public again. Both take up to a minute to take effect, so wait before
+re-checking with curl or the browser.
+
+Disabling CloudFront stops the URL serving anything. It takes a few minutes to
+propagate, both ways.
+
+
+THE SCRIPTS
+-----------
+
+status.sh                                    (read-only)
+    Shows the current state of every part: CloudFront enabled/disabled,
+    whether the app or the maintenance page is in S3, each service ON/OFF,
+    and database row counts. Run this before and after any other script.
+
+        ./cloud-deployment/status.sh
+
+
+launch-all.sh [--reset-db]                   (FULL LAUNCH)
+    Deploys or redeploys the whole site:
+      1. ../bin/deploy-backend.sh  Terraform creates/updates the Lambdas,
+                                   makes every Function URL public and
+                                   CloudFront enabled
+      2. ../bin/db-setup.sh        loads schema + seed if the database is
+                                   empty; keeps existing data otherwise
+      3. ../bin/deploy-frontend.sh builds the app and uploads it
+    Because Terraform re-applies the desired state, this single script also
+    reverses every disable script below. Takes 5-10 minutes.
+
+        ./cloud-deployment/launch-all.sh
+        ./cloud-deployment/launch-all.sh --reset-db    # also wipes and reseeds the DB
+
+    After the FIRST launch, log in as admin / Password123! and change the seed
+    passwords (Accounts page); the site is public.
+
+
+disable-all.sh [-y]                          (FULL SHUTDOWN, data kept)
+    Takes the entire site offline: locks every service URL, then disables the
+    CloudFront distribution. Asks you to type "offline" unless -y is given.
+    Nothing is deleted; the Aurora data, Lambdas and S3 files remain.
+
+        ./cloud-deployment/disable-all.sh
+
+    Bring it back with ./cloud-deployment/relaunch.sh all (fast, no Terraform)
+    or ./cloud-deployment/launch-all.sh (full redeploy).
+
+
+disable-website.sh                           (partial: pages off, API on)
+    Replaces the app's index.html in S3 with maintenance.html, so every page
+    shows "temporarily offline", while /api/... keeps answering (useful if you
+    want scripts or curl to keep working, or to hide the UI during changes).
+
+        ./cloud-deployment/disable-website.sh
+
+    Bring it back with ./cloud-deployment/relaunch.sh website
+
+
+disable-service.sh <service|all>             (partial: one API service off)
+    Locks one service's Function URL. The rest of the site keeps working, and
+    the affected screens show an error instead of data. Effects:
+
+        auth         nobody can log in (sessions already open last up to 1 h)
+        users        the admin Accounts page stops working
+        projects     project list/detail, team, budget, creating/archiving
+        milestones   milestone detail, dependencies, complete/archive
+        employees    People page, profiles, time logs
+        all          every service (CloudFront stays enabled; pages still load)
+
+        ./cloud-deployment/disable-service.sh auth
+        ./cloud-deployment/disable-service.sh all
+
+    Bring it back with ./cloud-deployment/relaunch.sh service <service|all>
+
+
+relaunch.sh <part>                           (bring parts back, no Terraform)
+    Fast re-enable of individual parts:
+
+        ./cloud-deployment/relaunch.sh website          # rebuild + upload the app
+        ./cloud-deployment/relaunch.sh service auth     # unlock one service
+        ./cloud-deployment/relaunch.sh service all      # unlock every service
+        ./cloud-deployment/relaunch.sh cloudfront       # re-enable CloudFront
+        ./cloud-deployment/relaunch.sh all              # all three of the above
+
+    "all" is the quick way to undo disable-all.sh; it does not touch the
+    database and does not redeploy backend code.
+
+
+WHICH ONE DO I WANT?
+--------------------
+  Put the site up for the first time ............ launch-all.sh
+  Ship a code change ............................ launch-all.sh
+                                                  (or ../bin/deploy-backend.sh /
+                                                   ../bin/deploy-frontend.sh alone)
+  Hide the site for a while, keep data .......... disable-all.sh, later relaunch.sh all
+  Show a maintenance page, keep the API ......... disable-website.sh, later relaunch.sh website
+  Stop everyone logging in ...................... disable-service.sh auth, later relaunch.sh service auth
+  Stop one feature area ......................... disable-service.sh <service>
+  Start over with fresh demo data ............... launch-all.sh --reset-db
+  Delete everything, including the database ..... ../bin/cleanup-environment.sh (not in this folder; irreversible)
+
+
+NOTES
+-----
+  - Terraform does not know about the on/off switches. Running
+    ../bin/deploy-backend.sh (directly or via launch-all.sh) puts every
+    Function URL back to public and CloudFront back to enabled. That is
+    intended: a deploy means "the site should be up".
+  - disable-website.sh leaves the app's JS/CSS in the bucket; only index.html
+    is swapped. relaunch.sh website re-uploads everything.
+  - status.sh and the disable/relaunch scripts need the backend to have been
+    deployed at least once; before that they report NOT DEPLOYED.
+  - Credentials expire every few hours. The scripts refresh them automatically
+    by running ../bin/setup-participant.sh when needed.
+  - maintenance.html is the page visitors see during disable-website.sh; edit
+    it freely (keep the "maintenance-page" comment so status.sh recognises it).
+  - _common.sh holds the shared helper functions and is not run directly.

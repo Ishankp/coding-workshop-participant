@@ -46,7 +46,7 @@ FUNCTION_NAME="${TF_VAR_aws_project:-coding-workshop}-dbsetup-${PARTICIPANT_ID:-
 case "$ACTION" in
     status) PAYLOAD='{"action":"status"}' ;;
     reset)
-        echo "WARNING: this deletes every row in the $ENVIRONMENT database and reloads the seed data."
+        echo "WARNING: this deletes every row in the $ENVIRONMENT database and reloads the seed data." >&2
         read -r -p "Type 'reset' to continue: " ANSWER
         [ "$ANSWER" = "reset" ] || { echo "Aborted."; exit 1; }
         PAYLOAD='{"action":"reset","confirm":true}'
@@ -55,7 +55,8 @@ case "$ACTION" in
 esac
 
 OUT=$(mktemp)
-echo "INFO: Invoking $FUNCTION_NAME with $PAYLOAD ..."
+# Progress goes to stderr so stdout is only the JSON result (scripts pipe it into jq)
+echo "INFO: Invoking $FUNCTION_NAME with $PAYLOAD ..." >&2
 aws lambda invoke --function-name "$FUNCTION_NAME" \
     --cli-binary-format raw-in-base64-out --payload "$PAYLOAD" "$OUT" > /dev/null
 if command -v jq > /dev/null 2>&1; then jq . "$OUT"; else cat "$OUT"; echo; fi

@@ -40,6 +40,8 @@ backend/        One folder per backend service; each is deployed as its own Lamb
   db/             schema.sql, seed.sql, reset.sql
 frontend/       React + Vite single-page app
 bin/            Scripts: start-dev.sh, sync-shared.sh, deploy-*.sh, ...
+cloud-deployment/  On/off switches for the AWS deployment (full launch, full
+                shutdown, per-part disable/relaunch) - see document.txt there
 infra/          Terraform (Lambda, S3/CloudFront, Aurora) - see README.md
 docs/           Workshop guides
 
@@ -360,6 +362,8 @@ ENVIRONMENT.config (never commit that file).
   Redeploy after code changes: backend -> ./bin/deploy-backend.sh (Terraform
   only repackages Lambdas whose files changed); frontend -> ./bin/deploy-frontend.sh.
   Tear down everything: ./bin/cleanup-environment.sh.
+  Switch the live site on/off in whole or in part without deleting anything:
+  see cloud-deployment/document.txt (launch-all.sh, disable-all.sh, ...).
 
   Cloud differences to keep in mind:
     - IS_LOCAL=false: database connections require SSL; JWT_SECRET must exist.
