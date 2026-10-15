@@ -97,6 +97,21 @@ class UserRepository:
             cur.execute("SELECT EXISTS (SELECT 1 FROM users WHERE lower(email) = lower(%s)) AS ok", (email,))
             return cur.fetchone()["ok"]
 
+    def count_time_entries_for_user(self, user_id: int) -> int:
+        """How many time entries the account's employee record has logged (0 for admins)."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT count(*) AS n FROM time_entries t JOIN employees e ON e.id = t.employee_id WHERE e.user_id = %s",
+                (user_id,),
+            )
+            return cur.fetchone()["n"]
+
+    def delete_user(self, user_id: int) -> bool:
+        """Delete an account; its employee record, memberships and assignments cascade. Return whether it existed."""
+        with self._get_connection().cursor() as cur:
+            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            return cur.rowcount == 1
+
     def find_employee_role(self, employee_id: int) -> str | None:
         """Return the role of the user behind an employee record, or None if there is no such employee."""
         with self._get_connection().cursor() as cur:

@@ -91,7 +91,7 @@ def _parse_password(body: dict) -> str:
 
 
 class UserController:
-    """Routes (admins only): GET/POST /users, PUT /users/{id}, POST /users/{id}/password|deactivate|reactivate."""
+    """Routes (admins only): GET/POST /users, PUT/DELETE /users/{id}, POST /users/{id}/password|deactivate|reactivate."""
 
     def __init__(self, service: UserService) -> None:
         self._service = service
@@ -117,6 +117,14 @@ class UserController:
         require_role(user, "admin", message="Only admins can manage user accounts")
         user_id = request.id_param("user_id", "userId")
         return json_response(200, self._service.update_user(user, user_id, _parse_update(request.json())))
+
+    def delete_user(self, request: Request) -> dict:
+        """DELETE /users/{userId} -> 204 | 400 | 401 | 403 | 404 | 409"""
+        user = require_user(request)
+        require_role(user, "admin", message="Only admins can manage user accounts")
+        user_id = request.id_param("user_id", "userId")
+        self._service.delete_user(user, user_id)
+        return json_response(204)
 
     def set_password(self, request: Request) -> dict:
         """POST /users/{userId}/password  body: {password} -> 204 | 400 | 401 | 403 | 404"""

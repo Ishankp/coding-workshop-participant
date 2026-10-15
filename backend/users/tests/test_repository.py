@@ -121,6 +121,27 @@ def test_create_admin_without_employee_record(repo):
     assert repo.find_user(created["user_id"])["employee_id"] is None
 
 
+def test_count_time_entries_for_user(repo):
+    assert repo.count_time_entries_for_user(4) >= 12  # priya
+    assert repo.count_time_entries_for_user(1) == 0  # admin has no employee record
+
+
+def test_delete_user_cascades_employee_record_and_memberships(repo, conn):
+    created = repo.create_user("temp", "temp@example.com", "T", "P", "employee", "$2b$12$x",
+                               {"title": None, "salary": None, "manager_id": 1})
+    with conn.cursor() as cur:
+        cur.execute("INSERT INTO employee_projects (employee_id, project_id) VALUES (%s, 1)", (created["employee_id"],))
+        cur.execute("INSERT INTO employee_milestones (employee_id, milestone_id) VALUES (%s, 2)", (created["employee_id"],))
+    assert repo.delete_user(created["user_id"]) is True
+    assert repo.delete_user(created["user_id"]) is False
+    assert repo.find_user(created["user_id"]) is None
+    with conn.cursor() as cur:
+        cur.execute("SELECT count(*) AS n FROM employees WHERE id = %s", (created["employee_id"],))
+        assert cur.fetchone()["n"] == 0
+        cur.execute("SELECT count(*) AS n FROM employee_projects WHERE employee_id = %s", (created["employee_id"],))
+        assert cur.fetchone()["n"] == 0
+
+
 def test_schema_rejects_duplicate_usernames_and_negative_salaries(repo, conn):
     with pytest.raises(errors.UniqueViolation):
         with conn.transaction():

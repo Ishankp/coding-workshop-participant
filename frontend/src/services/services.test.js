@@ -54,6 +54,7 @@ describe('userService', () => {
     [() => users.createUser({ username: 'x' }), ['/api/users', { method: 'POST', body: { username: 'x' } }]],
     [() => users.updateUser(5, { email: 'e' }), ['/api/users/5', { method: 'PUT', body: { email: 'e' } }]],
     [() => users.setUserPassword(5, 'pw'), ['/api/users/5/password', { method: 'POST', body: { password: 'pw' } }]],
+    [() => users.deleteUser(5), ['/api/users/5', { method: 'DELETE' }]],
     [() => users.deactivateUser(5), ['/api/users/5/deactivate', { method: 'POST' }]],
     [() => users.reactivateUser(5), ['/api/users/5/reactivate', { method: 'POST' }]],
   ])('calls the right endpoint (%#)', async (call, expected) => {

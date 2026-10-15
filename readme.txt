@@ -112,13 +112,28 @@ All seed accounts use the password:  Password123!
   admin     admin     no employee record; sees everything, manages accounts
   maria     manager   manages Priya and James; on project 1
   david     manager   manages Sofia and Kenji; on project 2
+  lena      manager   manages Omar, Ava and Noah; on project 5
   priya     employee  on projects 1 and 3
   james     employee  on projects 1 and 3
   sofia     employee  on project 2
   kenji     employee  on projects 1 and 2
+  omar      employee  on project 5
+  ava       employee  on project 5; no salary on file (hours count, cost doesn't)
+  noah      employee  on project 5; DEACTIVATED (can't log in) but has hours logged
 
-Seed projects: Customer Portal Redesign (active), Data Warehouse Migration
-(active), Mobile App Launch (completed), Legacy CRM Integration (archived).
+Seed projects:
+  1 Customer Portal Redesign  active, under budget (Maria's team)
+  2 Data Warehouse Migration  active, projected over budget (David's team)
+  3 Mobile App Launch         completed, finished over budget
+  4 Legacy CRM Integration    archived with an unfinished milestone; nobody on it
+  5 Analytics Platform        active (Lena's team). Shows the edge cases: "Data
+                              Pipeline" is past due and not complete, so
+                              "Dashboards" is held up; "Rollout" has nobody
+                              assigned; "Ideas backlog" has no dates; "Vendor
+                              evaluation" is archived.
+
+The repository and E2E tests depend on users 1-7, projects 1-4 and milestones
+1-7 staying as they are; add new seed data after them.
 
 
 5. RESETTING THE DATABASE
@@ -138,8 +153,8 @@ Three layers: backend unit tests (pytest), frontend unit/component tests
 against the running app. Coverage targets: backend and frontend 80%+ (both
 enforced), API endpoints and error handling 90%+, critical user paths 100% E2E.
 
-Backend (487 tests: 432 unit tests where repositories are replaced by
-in-memory fakes, plus 55 repository tests that run the real SQL against the
+Backend (506 tests: 449 unit tests where repositories are replaced by
+in-memory fakes, plus 57 repository tests that run the real SQL against the
 local PostgreSQL and roll back afterwards):
 
     pip install --user pytest pytest-cov   # once
@@ -174,7 +189,7 @@ local PostgreSQL and roll back afterwards):
   guards), controllers (body validation), and routing (every one of the 38
   routes has a handler-level status-code test).
 
-Frontend unit and component tests (305 tests, jsdom, no server needed):
+Frontend unit and component tests (310 tests, jsdom, no server needed):
 
     cd frontend
     npm install              # once
@@ -190,7 +205,7 @@ Frontend unit and component tests (305 tests, jsdom, no server needed):
   validation, every button). Shared render helper: src/test/helpers.jsx.
   Current coverage is ~99% lines and branches.
 
-End-to-end tests (20 Playwright tests, real browser, real backend and
+End-to-end tests (21 Playwright tests, real browser, real backend and
 database). Start the app first, with the seed data loaded (section 3):
 
     cd frontend
@@ -210,10 +225,10 @@ database). Start the app first, with the seed data loaded (section 3):
   edits and removes a report's time entry; admin sees all projects, creates
   and deletes an empty project, is refused deleting one with hours, creates an
   account, resets its password, signs in as that person, deactivates the
-  account and confirms it can no longer sign in, and is refused a duplicate
-  username. Records the tests create use unique names; the project is deleted
-  at the end, but test accounts stay (deactivated) because accounts can't be
-  deleted.
+  account and confirms it can no longer sign in, deletes it, is refused
+  deleting someone with hours logged, and is refused a duplicate username.
+  Records the tests create use unique names and are deleted at the end, so
+  the suite leaves the seed data as it found it.
 
   "npm run lint" currently fails to start because two ESLint plugins named in
   eslint.config.js are not installed; it is not part of the build.
@@ -301,7 +316,9 @@ Manager (everything an employee can, plus, on projects they are a member of)
 
 Admin (everything a manager can, on every project, plus)
   - Accounts page: create accounts (admin/manager/employee), edit details and
-    salary, set passwords, deactivate/reactivate
+    salary, set passwords, deactivate/reactivate, and delete employee or
+    manager accounts that have no hours logged and no direct reports (admins
+    and everyone else can only be deactivated, so history is kept)
   - Delete projects and milestones (refused while hours are logged on them)
   - Admins have no employee record, so no projects or time log of their own
 
@@ -329,6 +346,7 @@ users (admin only)
   GET    /users
   POST   /users                            create account
   PUT    /users/{id}                       edit
+  DELETE /users/{id}                       delete (409 if admin, has reports or hours)
   POST   /users/{id}/password              {password}
   POST   /users/{id}/deactivate | /reactivate
 

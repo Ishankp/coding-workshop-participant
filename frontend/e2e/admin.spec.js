@@ -79,6 +79,25 @@ test.describe('Admin', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await expect(page.getByRole('alert')).toBeVisible()
     await expect(page).toHaveURL(/\/login$/)
+
+    // Delete the account for good; it never logged hours so this is allowed
+    await login(page, 'admin')
+    await page.goto('/users')
+    await page.getByRole('row', { name: new RegExp(username) }).getByRole('button', { name: 'Manage' }).click()
+    acceptNextConfirm(page)
+    await page.getByRole('button', { name: 'Delete account' }).click()
+    await expect(page.getByRole('row', { name: new RegExp(username) })).toHaveCount(0)
+    await expect(page.locator('.account-panel')).toHaveCount(0)
+  })
+
+  test('is refused deleting an account with hours logged', async ({ page }) => {
+    await login(page, 'admin')
+    await page.goto('/users')
+    await page.getByRole('row', { name: /priya/ }).getByRole('button', { name: 'Manage' }).click()
+    acceptNextConfirm(page)
+    await page.getByRole('button', { name: 'Delete account' }).click()
+    await expect(page.locator('.account-panel').getByRole('alert')).toContainText('deactivate the account instead')
+    await expect(page.getByRole('row', { name: /priya/ })).toBeVisible()
   })
 
   test('rejects a duplicate username', async ({ page }) => {

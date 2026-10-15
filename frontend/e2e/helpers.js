@@ -28,3 +28,20 @@ export function unique(prefix) {
 export function acceptNextConfirm(page) {
   page.once('dialog', (dialog) => dialog.accept())
 }
+
+const API = process.env.E2E_API_URL || 'http://localhost:3001'
+
+/**
+ * Remove an employee's time entries whose note contains `noteText`, acting as `manager`
+ * through the API. Lets a test that logs hours as an employee (who can't delete entries)
+ * leave the database as it found it.
+ */
+export async function deleteTimeEntriesByNote(request, manager, employeeId, noteText) {
+  const loginResponse = await request.post(`${API}/api/auth/login`, { data: { username: manager, password: PASSWORD } })
+  const { token } = await loginResponse.json()
+  const headers = { Authorization: `Bearer ${token}` }
+  const log = await (await request.get(`${API}/api/employees/${employeeId}/time-entries`, { headers })).json()
+  for (const entry of log.entries.filter((e) => e.note?.includes(noteText))) {
+    await request.delete(`${API}/api/employees/${employeeId}/time-entries/${entry.entryId}`, { headers })
+  }
+}

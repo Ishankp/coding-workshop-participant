@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import PropTypes from 'prop-types'
-import { deactivateUser, reactivateUser, setUserPassword, updateUser } from '../services/userService'
+import { deactivateUser, deleteUser, reactivateUser, setUserPassword, updateUser } from '../services/userService'
 
 const ROLE_OPTIONS = [
   { value: 'employee', label: 'Employee' },
@@ -9,7 +9,9 @@ const ROLE_OPTIONS = [
 
 /**
  * Admin controls for one account: edit details (and salary), set a new password,
- * deactivate or reactivate. `onChanged` reloads the list; `onClose` hides the panel.
+ * deactivate or reactivate, or delete an employee or manager outright (the server
+ * refuses while they have hours logged or direct reports). `onChanged` reloads the
+ * list; `onClose` hides the panel.
  */
 export default function AccountPanel({ account, isSelf, onChanged, onClose }) {
   const [form, setForm] = useState({
@@ -85,6 +87,21 @@ export default function AccountPanel({ account, isSelf, onChanged, onClose }) {
       () => (deactivated ? reactivateUser(account.userId) : deactivateUser(account.userId)),
       deactivated ? `${account.name} reactivated.` : `${account.name} deactivated.`,
     )
+  }
+
+  const handleDelete = async () => {
+    const question = `Permanently delete ${account.name}'s account? This cannot be undone. If they have logged hours or manage people, deactivate instead.`
+    if (!window.confirm(question)) return
+    setBusy(true)
+    setMessage({ kind: '', text: '' })
+    try {
+      await deleteUser(account.userId)
+      await onChanged()
+      onClose()
+    } catch (err) {
+      setMessage({ kind: 'error', text: err.message })
+      setBusy(false)
+    }
   }
 
   const errorId = (name) => (fieldErrors[name] ? `acct-${name}-error` : undefined)
@@ -190,7 +207,12 @@ export default function AccountPanel({ account, isSelf, onChanged, onClose }) {
         <button type="button" className={`secondary ${account.deactivatedAt ? '' : 'danger-button'}`} onClick={handleActive} disabled={busy || isSelf}>
           {account.deactivatedAt ? 'Reactivate account' : 'Deactivate account'}
         </button>
-        {isSelf && <span className="muted small">You can&apos;t deactivate your own account.</span>}
+        {!isAdminAccount && (
+          <button type="button" className="secondary danger-button" onClick={handleDelete} disabled={busy || isSelf}>
+            Delete account
+          </button>
+        )}
+        {isSelf && <span className="muted small">You can&apos;t deactivate or delete your own account.</span>}
       </div>
     </div>
   )

@@ -49,6 +49,17 @@ export function setUserPassword(userId, password) {
 }
 
 /**
+ * Permanently delete an employee's or manager's account (admins only). Refused with 409 for admin
+ * accounts, managers with direct reports, and anyone with hours logged: deactivate those instead.
+ * DELETE /api/users/{userId}
+ * @param {number} userId
+ * @returns {Promise<null>}
+ */
+export function deleteUser(userId) {
+  return apiRequest(`${BASE}/${encodeURIComponent(userId)}`, { method: 'DELETE' })
+}
+
+/**
  * Deactivate an account: it can't log in and leaves pickers, but history stays. POST /api/users/{userId}/deactivate
  * @param {number} userId
  * @returns {Promise<{userId: number, deactivatedAt: string}>}

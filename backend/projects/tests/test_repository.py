@@ -105,7 +105,7 @@ def test_members_and_milestones_views(repo):
 
 def test_project_cost_and_time_entry_counts(repo):
     cost = repo.find_project_cost(1, 2080)
-    assert cost["hours"] >= Decimal("84.5")
+    assert cost["hours"] >= Decimal("79.5")  # priya 46.5 + james 33 on Design System
     assert cost["cost"] > 0
     assert cost["employees_without_salary"] == 0
     empty = repo.find_project_cost(4, 2080)

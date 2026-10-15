@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import AccountPanel from './AccountPanel'
-import { deactivateUser, reactivateUser, setUserPassword, updateUser } from '../services/userService'
+import { deactivateUser, deleteUser, reactivateUser, setUserPassword, updateUser } from '../services/userService'
 import { apiError } from '../test/helpers'
 
 vi.mock('../services/userService')
@@ -93,7 +93,7 @@ describe('AccountPanel initial render', () => {
   it('blocks deactivating your own account', () => {
     setup(EMPLOYEE_ACCOUNT, { isSelf: true })
     expect(screen.getByRole('button', { name: 'Deactivate account' })).toBeDisabled()
-    expect(screen.getByText(/You can't deactivate your own account/)).toBeInTheDocument()
+    expect(screen.getByText(/You can't deactivate or delete your own account/)).toBeInTheDocument()
   })
 
   it('closes from the close button', async () => {
@@ -281,5 +281,45 @@ describe('AccountPanel activation', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Last admin cannot be deactivated')
     expect(onChanged).not.toHaveBeenCalled()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Deactivate account' })).toBeEnabled())
+  })
+})
+
+describe('AccountPanel delete', () => {
+  it('deletes after confirmation, reloads the list and closes', async () => {
+    vi.mocked(deleteUser).mockResolvedValue(null)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { onChanged, onClose } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete account' }))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("Permanently delete Sam Lee's account"))
+    expect(deleteUser).toHaveBeenCalledWith(7)
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(onChanged).toHaveBeenCalled()
+  })
+
+  it('does nothing when the confirmation is cancelled', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const { onClose } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete account' }))
+    expect(deleteUser).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('shows the server refusal and stays open', async () => {
+    vi.mocked(deleteUser).mockRejectedValue(apiError(409, 'Sam Lee has 3 time entries logged; deactivate the account instead of deleting it'))
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { onClose } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Delete account' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('3 time entries logged')
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Delete account' })).toBeEnabled()
+  })
+
+  it('is not offered for admin accounts and is blocked for your own account', () => {
+    setup(ADMIN_ACCOUNT)
+    expect(screen.queryByRole('button', { name: 'Delete account' })).not.toBeInTheDocument()
+    cleanup()
+    setup(EMPLOYEE_ACCOUNT, { isSelf: true })
+    expect(screen.getByRole('button', { name: 'Delete account' })).toBeDisabled()
+    expect(screen.getByText(/can't deactivate or delete your own account/)).toBeInTheDocument()
   })
 })

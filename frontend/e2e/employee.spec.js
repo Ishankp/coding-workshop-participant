@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { login, unique } from './helpers'
+import { deleteTimeEntriesByNote, login, unique } from './helpers'
 
 test.describe('Employee', () => {
   test('sees only their projects, with no budget or create button', async ({ page }) => {
@@ -48,7 +48,7 @@ test.describe('Employee', () => {
     await expect(page.getByRole('link', { name: 'Sofia Rossi' })).toHaveCount(0)
   })
 
-  test('logs hours on an assigned milestone and cannot edit or remove them', async ({ page }) => {
+  test('logs hours on an assigned milestone and cannot edit or remove them', async ({ page, request }) => {
     const note = unique('E2E entry')
     await login(page, 'priya')
     await page.getByRole('link', { name: 'My time' }).click()
@@ -65,6 +65,9 @@ test.describe('Employee', () => {
     await expect(row).toContainText('2.5')
     await expect(row.getByRole('button', { name: /Remove entry/ })).toHaveCount(0)
     await expect(row.getByRole('button', { name: /Edit entry/ })).toHaveCount(0)
+
+    // Priya can't remove it, but her manager can
+    await deleteTimeEntriesByNote(request, 'maria', 3, note)
   })
 
   test('is told when hours are invalid', async ({ page }) => {

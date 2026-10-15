@@ -49,7 +49,9 @@ class FakeUserRepository:
         ]
         self.created = []
         self.passwords = {}
+        self.deleted = []
         self.reports = {1: 1}   # employee id -> number of direct reports
+        self.entries = {4: 12}  # user id -> time entries logged
 
     def find_all_users(self):
         return [dict(u) for u in self.users]
@@ -83,6 +85,15 @@ class FakeUserRepository:
 
     def email_taken_by_other(self, email, user_id):
         return any(u["email"].lower() == email.lower() and u["user_id"] != user_id for u in self.users)
+
+    def count_time_entries_for_user(self, user_id):
+        return self.entries.get(user_id, 0)
+
+    def delete_user(self, user_id):
+        before = len(self.users)
+        self.users = [u for u in self.users if u["user_id"] != user_id]
+        self.deleted.append(user_id)
+        return len(self.users) < before
 
     def create_user(self, username, email, first_name, last_name, role, password_hash, employee):  # pylint: disable=too-many-arguments
         self.created.append({"username": username, "email": email, "role": role, "hash": password_hash, "employee": employee})
@@ -246,6 +257,53 @@ def test_admin_cannot_deactivate_self(service, repo):
     assert repo.find_user(1)["deactivated_at"] is None
 
 
+# Deleting
+
+def test_admin_deletes_an_employee_without_hours(service, repo):
+    repo.entries = {}
+    service.delete_user(ADMIN, 4)
+    assert repo.deleted == [4]
+    assert repo.find_user(4) is None
+
+
+def test_delete_refuses_someone_with_hours_logged(service, repo):
+    with pytest.raises(ConflictError, match="12 time entries logged"):
+        service.delete_user(ADMIN, 4)
+    assert repo.deleted == []
+
+
+def test_delete_refuses_a_manager_with_direct_reports(service, repo):
+    with pytest.raises(ConflictError, match="still manages 1 person"):
+        service.delete_user(ADMIN, 2)
+    assert repo.deleted == []
+
+
+def test_delete_refuses_admin_accounts(service, repo):
+    repo.users.append({**repo.users[0], "user_id": 9, "username": "root", "email": "root@example.com"})
+    with pytest.raises(ConflictError, match="admin accounts can be deactivated but not deleted"):
+        service.delete_user(ADMIN, 9)
+    assert repo.deleted == []
+
+
+def test_admin_cannot_delete_self(service, repo):
+    with pytest.raises(ValidationError):
+        service.delete_user(ADMIN, 1)
+    assert repo.deleted == []
+
+
+def test_delete_unknown_account_is_404(service):
+    with pytest.raises(NotFoundError):
+        service.delete_user(ADMIN, 404)
+
+
+@pytest.mark.parametrize("user", [MANAGER, EMPLOYEE])
+def test_non_admins_cannot_delete(service, repo, user):
+    repo.entries = {}
+    with pytest.raises(ForbiddenError):
+        service.delete_user(user, 4)
+    assert repo.deleted == []
+
+
 @pytest.mark.parametrize("user", [MANAGER, EMPLOYEE])
 def test_non_admins_cannot_reset_or_deactivate(service, user):
     with pytest.raises(ForbiddenError):
@@ -295,6 +353,7 @@ def fixture_handler(monkeypatch, service):
     router.add("GET", "/", controller.list_users)
     router.add("POST", "/", controller.create_user)
     router.add("PUT", "/{user_id}", controller.update_user)
+    router.add("DELETE", "/{user_id}", controller.delete_user)
     router.add("POST", "/{user_id}/password", controller.set_password)
     router.add("POST", "/{user_id}/deactivate", controller.deactivate_user)
     router.add("POST", "/{user_id}/reactivate", controller.reactivate_user)
@@ -323,11 +382,24 @@ def event(method, user=None, body=None, path="/"):
     (event("POST", ADMIN, {"password": "short"}, path="/4/password"), 400),
     (event("POST", ADMIN, path="/4/deactivate"), 200),
     (event("POST", ADMIN, path="/4/reactivate"), 200),
+    (event("DELETE", ADMIN, path="/4"), 409),
+    (event("DELETE", ADMIN, path="/2"), 409),
+    (event("DELETE", ADMIN, path="/1"), 400),
+    (event("DELETE", ADMIN, path="/404"), 404),
+    (event("DELETE", ADMIN, path="/abc"), 400),
+    (event("DELETE", MANAGER, path="/4"), 403),
     (event("POST", ADMIN, path="/1/deactivate"), 400),
     (event("POST", MANAGER, path="/4/deactivate"), 403),
 ])
 def test_handler_statuses(handler, ev, status):
     assert handler(ev)["statusCode"] == status
+
+
+def test_handler_delete_returns_204(handler, repo):
+    repo.entries = {}
+    response = handler(event("DELETE", ADMIN, path="/4"))
+    assert response["statusCode"] == 204
+    assert repo.deleted == [4]
 
 
 def test_handler_create_returns_ids(handler):
@@ -343,6 +415,7 @@ def test_handler_create_returns_ids(handler):
     ("GET", "/api/users"),
     ("POST", "/api/users"),
     ("PUT", "/api/users/1"),
+    ("DELETE", "/api/users/1"),
     ("POST", "/api/users/1/password"),
     ("POST", "/api/users/1/deactivate"),
     ("POST", "/api/users/1/reactivate"),

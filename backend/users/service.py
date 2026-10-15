@@ -7,6 +7,8 @@ manager); admins don't. A manager must be chosen from people whose role is
 manager, and is fixed once set. Roles can move between manager and employee
 (not to or from admin), and a manager with direct reports can't be demoted.
 Deactivated accounts can't log in and drop out of pickers but keep history.
+Deleting is for employees and managers who never logged hours and manage no
+one; everyone else is deactivated so their history stays intact.
 """
 
 import bcrypt
@@ -173,6 +175,38 @@ class UserService:
             raise ValidationError("You can't deactivate your own account", {"userId": "That's you"})
         row = self._repository.set_deactivated(user_id, deactivated)
         return {"userId": user_id, "deactivatedAt": row["deactivated_at"]}
+
+    def delete_user(self, user: CurrentUser, user_id: int) -> None:
+        """
+        Permanently delete an employee's or manager's account, with its employee record,
+        project memberships and milestone assignments.
+
+        Raises:
+            ForbiddenError: not an admin.
+            NotFoundError: no such account.
+            ValidationError: deleting your own account.
+            ConflictError: an admin account, a manager who still has direct reports, or
+                someone with hours logged (their time entries would be lost); deactivate instead.
+        """
+        self._require_admin(user)
+        account = self._load(user_id)
+        if user_id == user.id:
+            raise ValidationError("You can't delete your own account", {"userId": "That's you"})
+        name = full_name(account["first_name"], account["last_name"], account["username"])
+        if account["role"] == "admin":
+            raise ConflictError(f"{name} is an admin; admin accounts can be deactivated but not deleted")
+        if account["direct_reports"]:
+            count = account["direct_reports"]
+            raise ConflictError(
+                f"{name} still manages {count} {'person' if count == 1 else 'people'}; deactivate the account instead"
+            )
+        entries = self._repository.count_time_entries_for_user(user_id)
+        if entries:
+            raise ConflictError(
+                f"{name} has {entries} time {'entry' if entries == 1 else 'entries'} logged; "
+                "deactivate the account instead of deleting it"
+            )
+        self._repository.delete_user(user_id)
 
     def _load(self, user_id: int) -> dict:
         account = self._repository.find_user(user_id)
