@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
 import {
   archiveMilestone,
   completeMilestone,
+  deleteMilestone,
   getMilestone,
   reopenMilestone,
   unarchiveMilestone,
@@ -22,6 +23,8 @@ export default function MilestonePage() {
   const { data: milestone, error, loading, reload } = useApiData(loadMilestone)
   const { role } = useAuth().user
   const canManage = role === 'admin' || role === 'manager'
+  const isAdmin = role === 'admin'
+  const navigate = useNavigate()
   const [archiving, setArchiving] = useState(false)
   const [archiveError, setArchiveError] = useState('')
   const [editing, setEditing] = useState(false)
@@ -37,6 +40,19 @@ export default function MilestonePage() {
     } catch (err) {
       setArchiveError(err.message)
     } finally {
+      setArchiving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Permanently delete "${milestone.name}"? This cannot be undone.`)) return
+    setArchiving(true)
+    setArchiveError('')
+    try {
+      await deleteMilestone(milestone.milestoneId)
+      navigate(`/projects/${milestone.projectId}`)
+    } catch (err) {
+      setArchiveError(err.message)
       setArchiving(false)
     }
   }
@@ -90,6 +106,11 @@ export default function MilestonePage() {
             <button type="button" className="secondary" onClick={toggleArchive} disabled={archiving}>
               {archiving ? 'Saving…' : milestone.archivedAt ? 'Restore milestone' : 'Archive milestone'}
             </button>
+            {isAdmin && (
+              <button type="button" className="secondary danger-button" onClick={handleDelete} disabled={archiving}>
+                Delete
+              </button>
+            )}
           </span>
         )}
       </div>

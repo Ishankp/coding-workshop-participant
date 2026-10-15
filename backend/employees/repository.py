@@ -33,7 +33,7 @@ class EmployeeRepository:
             cur.execute(
                 f"SELECT {_LIST_COLUMNS} FROM employees e "
                 "JOIN users u ON u.id = e.user_id "
-                "WHERE " + _EMPLOYEE_MATCHES + " "
+                "WHERE u.deactivated_at IS NULL AND " + _EMPLOYEE_MATCHES + " "
                 "ORDER BY u.last_name, u.first_name, e.id",
                 {"pattern": contains_pattern(query) if query else None},
             )
@@ -49,7 +49,7 @@ class EmployeeRepository:
             cur.execute(
                 f"SELECT {_LIST_COLUMNS} FROM employees e "
                 "JOIN users u ON u.id = e.user_id "
-                "WHERE (e.user_id = %(user_id)s "
+                "WHERE u.deactivated_at IS NULL AND (e.user_id = %(user_id)s "
                 "   OR e.manager_id = (SELECT id FROM employees WHERE user_id = %(user_id)s) "
                 "   OR EXISTS ("
                 "     SELECT 1 FROM employee_projects ep"

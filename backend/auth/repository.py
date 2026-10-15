@@ -22,7 +22,7 @@ class AuthRepository:
         """
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT u.id, u.username, u.first_name, u.last_name, u.role, u.password_hashed, "
+                "SELECT u.id, u.username, u.first_name, u.last_name, u.role, u.password_hashed, u.deactivated_at, "
                 "       e.id AS employee_id "
                 "FROM users u LEFT JOIN employees e ON e.user_id = u.id "
                 "WHERE lower(u.username) = lower(%s)",

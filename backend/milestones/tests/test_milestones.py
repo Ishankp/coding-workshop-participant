@@ -60,6 +60,8 @@ class FakeMilestoneRepository:
 
     def __init__(self):
         self.milestone = dict(MILESTONE)
+        self.entries = 3
+        self.deleted = False
 
     def find_milestone_by_id(self, milestone_id):
         return dict(self.milestone) if milestone_id == 5 else None
@@ -67,6 +69,15 @@ class FakeMilestoneRepository:
     def set_archived(self, milestone_id, archived):
         self.milestone["archived_at"] = datetime(2026, 10, 14) if archived else None
         return {"id": 5, "title": "Migration", "archived_at": self.milestone["archived_at"]}
+
+    def count_time_entries(self, milestone_id):
+        return self.entries
+
+    def delete_milestone(self, milestone_id):
+        if milestone_id != 5 or self.deleted:
+            return False
+        self.deleted = True
+        return True
 
     def set_completed(self, milestone_id, completed):
         self.milestone["completed_at"] = datetime(2026, 10, 14, 15) if completed else None
@@ -94,6 +105,28 @@ def fixture_repo():
 @pytest.fixture(name="service")
 def fixture_service(repo):
     return MilestoneService(repo)
+
+
+# Deleting (admins only)
+
+def test_admin_deletes_milestone_without_hours(service, repo):
+    repo.entries = 0
+    service.delete_milestone(ADMIN, 5)
+    assert repo.deleted
+
+
+def test_delete_milestone_refused_while_hours_are_logged(service, repo):
+    with pytest.raises(ConflictError, match="3 time entries logged on it; archive it instead"):
+        service.delete_milestone(ADMIN, 5)
+    assert not repo.deleted
+
+
+@pytest.mark.parametrize("user", [MANAGER, MEMBER])
+def test_only_admins_delete_milestones(service, repo, user):
+    repo.entries = 0
+    with pytest.raises(ForbiddenError):
+        service.delete_milestone(user, 5)
+    assert not repo.deleted
 
 
 # Completing
@@ -237,6 +270,7 @@ def fixture_handler(monkeypatch, service):
     controller = MilestoneController(service)
     router.add("GET", "/{milestone_id}", controller.get_milestone)
     router.add("PUT", "/{milestone_id}", controller.update_milestone)
+    router.add("DELETE", "/{milestone_id}", controller.delete_milestone)
     router.add("POST", "/{milestone_id}/complete", controller.complete_milestone)
     router.add("POST", "/{milestone_id}/reopen", controller.reopen_milestone)
     router.add("POST", "/{milestone_id}/archive", controller.archive_milestone)
@@ -264,6 +298,8 @@ def get(path, user=None, method="GET"):
     (get("/5/complete", MANAGER, "POST"), 200),
     (get("/5/reopen", MANAGER, "POST"), 200),
     (get("/5/complete", MEMBER, "POST"), 403),
+    (get("/5", MANAGER, "DELETE"), 403),
+    (get("/5", ADMIN, "DELETE"), 409),
 ])
 
 def test_handler_statuses(handler, event, status):

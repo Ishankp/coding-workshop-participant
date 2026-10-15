@@ -76,6 +76,22 @@ class ProjectRepository:
             )
             return cur.fetchall()
 
+    def count_project_time_entries(self, project_id: int) -> int:
+        """How many time entries exist on any of the project's milestones."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT count(*) AS n FROM time_entries t JOIN milestones m ON m.id = t.milestone_id "
+                "WHERE m.project_id = %s",
+                (project_id,),
+            )
+            return cur.fetchone()["n"]
+
+    def delete_project(self, project_id: int) -> bool:
+        """Delete a project (its milestones, memberships and dependencies cascade); return whether it existed."""
+        with self._get_connection().cursor() as cur:
+            cur.execute("DELETE FROM projects WHERE id = %s", (project_id,))
+            return cur.rowcount == 1
+
     def set_project_archived(self, project_id: int, archived: bool) -> dict:
         """Archive or restore a project; return its row."""
         with self._get_connection().cursor() as cur:
@@ -261,7 +277,8 @@ class ProjectRepository:
             cur.execute(
                 "SELECT e.id AS employee_id, e.title, u.username, u.first_name, u.last_name, u.role "
                 "FROM employees e JOIN users u ON u.id = e.user_id "
-                "WHERE NOT EXISTS (SELECT 1 FROM employee_projects ep"
+                "WHERE u.deactivated_at IS NULL "
+                "  AND NOT EXISTS (SELECT 1 FROM employee_projects ep"
                 "                  WHERE ep.project_id = %(project_id)s AND ep.employee_id = e.id) "
                 "  AND (%(user_id)s::int IS NULL OR " + _IN_POOL_OF_USER + ") "
                 "ORDER BY u.last_name, u.first_name, e.id",

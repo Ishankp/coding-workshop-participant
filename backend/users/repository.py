@@ -20,8 +20,8 @@ class UserRepository:
         """Return every account with its employee record (if any) and manager's name."""
         with self._get_connection().cursor() as cur:
             cur.execute(
-                "SELECT u.id AS user_id, u.username, u.email, u.first_name, u.last_name, u.role, "
-                "       e.id AS employee_id, e.title, e.manager_id, "
+                "SELECT u.id AS user_id, u.username, u.email, u.first_name, u.last_name, u.role, u.deactivated_at, "
+                "       e.id AS employee_id, e.title, e.salary, e.manager_id, "
                 "       mu.first_name AS manager_first_name, mu.last_name AS manager_last_name, "
                 "       mu.username AS manager_username "
                 "FROM users u "
@@ -31,6 +31,59 @@ class UserRepository:
                 "ORDER BY u.role, u.last_name, u.first_name, u.id"
             )
             return cur.fetchall()
+
+    def find_user(self, user_id: int) -> dict | None:
+        """Return one account with its employee id and how many people report to it, or None."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT u.id AS user_id, u.username, u.email, u.first_name, u.last_name, u.role, u.deactivated_at, "
+                "       e.id AS employee_id, e.title, e.salary, "
+                "       (SELECT count(*) FROM employees r WHERE r.manager_id = e.id) AS direct_reports "
+                "FROM users u LEFT JOIN employees e ON e.user_id = u.id WHERE u.id = %s",
+                (user_id,),
+            )
+            return cur.fetchone()
+
+    def update_user(  # pylint: disable=too-many-arguments
+        self, user_id: int, email: str, first_name: str | None, last_name: str | None, role: str,
+        employee: dict | None,
+    ) -> None:
+        """Change an account's details and, when `employee` is given ({title, salary}), its employee record."""
+        conn = self._get_connection()
+        with conn.transaction():
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET email = %s, first_name = %s, last_name = %s, role = %s WHERE id = %s",
+                    (email, first_name, last_name, role, user_id),
+                )
+                if employee is not None:
+                    cur.execute(
+                        "UPDATE employees SET title = %s, salary = %s WHERE user_id = %s",
+                        (employee["title"], employee["salary"], user_id),
+                    )
+
+    def set_password(self, user_id: int, password_hash: str) -> None:
+        """Replace an account's password hash."""
+        with self._get_connection().cursor() as cur:
+            cur.execute("UPDATE users SET password_hashed = %s WHERE id = %s", (password_hash, user_id))
+
+    def set_deactivated(self, user_id: int, deactivated: bool) -> dict:
+        """Deactivate or reactivate an account; return {deactivated_at}."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "UPDATE users SET deactivated_at = CASE WHEN %s THEN COALESCE(deactivated_at, now()) ELSE NULL END "
+                "WHERE id = %s RETURNING deactivated_at",
+                (deactivated, user_id),
+            )
+            return cur.fetchone()
+
+    def email_taken_by_other(self, email: str, user_id: int) -> bool:
+        """Case-insensitive check that another account doesn't already use the email."""
+        with self._get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT EXISTS (SELECT 1 FROM users WHERE lower(email) = lower(%s) AND id <> %s) AS ok", (email, user_id)
+            )
+            return cur.fetchone()["ok"]
 
     def username_taken(self, username: str) -> bool:
         """Case-insensitive username check."""

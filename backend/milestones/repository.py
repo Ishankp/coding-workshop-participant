@@ -49,6 +49,18 @@ class MilestoneRepository:
             )
             return cur.fetchone()
 
+    def count_time_entries(self, milestone_id: int) -> int:
+        """How many time entries exist on the milestone."""
+        with self._get_connection().cursor() as cur:
+            cur.execute("SELECT count(*) AS n FROM time_entries WHERE milestone_id = %s", (milestone_id,))
+            return cur.fetchone()["n"]
+
+    def delete_milestone(self, milestone_id: int) -> bool:
+        """Delete a milestone (assignments and dependencies cascade); return whether it existed."""
+        with self._get_connection().cursor() as cur:
+            cur.execute("DELETE FROM milestones WHERE id = %s", (milestone_id,))
+            return cur.rowcount == 1
+
     def set_archived(self, milestone_id: int, archived: bool) -> dict:
         """Archive or restore a milestone; return {id, title, archived_at}."""
         with self._get_connection().cursor() as cur:

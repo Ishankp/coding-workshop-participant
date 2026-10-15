@@ -9,7 +9,7 @@ import bcrypt
 
 from repository import AuthRepository
 from shared import tokens
-from shared.errors import InvalidCredentialsError
+from shared.errors import AuthenticationError, InvalidCredentialsError
 
 # Checked against when the username doesn't exist, so a wrong username takes as
 # long as a wrong password and response timing doesn't reveal which one it was
@@ -40,11 +40,14 @@ class AuthService:
 
         Raises:
             InvalidCredentialsError: no such user, or the password doesn't match.
+            AuthenticationError: the account has been deactivated.
         """
         user = self._repository.find_user_by_username(username)
         matches = _password_matches(password, user["password_hashed"] if user else None)
         if user is None or not matches:
             raise InvalidCredentialsError("Invalid username or password")
+        if user["deactivated_at"] is not None:
+            raise AuthenticationError("This account has been deactivated")
 
         return {
             "userId": user["id"],

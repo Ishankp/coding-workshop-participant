@@ -110,6 +110,16 @@ export function createMilestone(projectId, data) {
 }
 
 /**
+ * Permanently delete a project (admins only; refused with 409 while hours are logged on it).
+ * DELETE /api/projects/{projectId}
+ * @param {number|string} projectId
+ * @returns {Promise<null>}
+ */
+export function deleteProject(projectId) {
+  return apiRequest(`${BASE}/${encodeURIComponent(projectId)}`, { method: 'DELETE' })
+}
+
+/**
  * Archive a project: hidden from employees and left out of progress (managers who are members, and admins).
  * POST /api/projects/{projectId}/archive
  * @param {number|string} projectId

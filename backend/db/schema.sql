@@ -16,7 +16,8 @@ CREATE TABLE users (
   first_name      VARCHAR(100),
   last_name       VARCHAR(100),
   role            user_role NOT NULL DEFAULT 'employee',
-  password_hashed VARCHAR(255) NOT NULL
+  password_hashed VARCHAR(255) NOT NULL,
+  deactivated_at  TIMESTAMP                      -- set when an admin deactivates the account; can't log in
 );
 
 CREATE TABLE projects (

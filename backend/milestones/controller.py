@@ -65,6 +65,13 @@ class MilestoneController:
         milestone_id = request.id_param("milestone_id", "milestoneId")
         return json_response(200, self._service.set_completed(user, milestone_id, False))
 
+    def delete_milestone(self, request: Request) -> dict:
+        """DELETE /milestones/{milestoneId} -> 204 | 400 | 401 | 403 | 404 | 409 (admins only)"""
+        user = require_user(request)
+        milestone_id = request.id_param("milestone_id", "milestoneId")
+        self._service.delete_milestone(user, milestone_id)
+        return json_response(204)
+
     def archive_milestone(self, request: Request) -> dict:
         """POST /milestones/{milestoneId}/archive -> 200 {milestoneId, name, archivedAt} | 400 | 401 | 403 | 404"""
         user = require_user(request)

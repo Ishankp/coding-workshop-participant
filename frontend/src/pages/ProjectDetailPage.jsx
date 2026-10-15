@@ -1,9 +1,10 @@
 import { useCallback, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
 import {
   archiveProject,
+  deleteProject,
   getProject,
   getProjectBudget,
   getProjectMilestones,
@@ -30,6 +31,8 @@ export default function ProjectDetailPage() {
   const { projectId } = useParams()
   const { role } = useAuth().user
   const canSeeBudget = role === 'admin' || role === 'manager'
+  const isAdmin = role === 'admin'
+  const navigate = useNavigate()
   const loadProject = useCallback(
     () =>
       Promise.all([
@@ -63,6 +66,20 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const handleDelete = async (project) => {
+    const question = `Permanently delete "${project.title}" and all its milestones? This cannot be undone.`
+    if (!window.confirm(question)) return
+    setArchiving(true)
+    setArchiveError('')
+    try {
+      await deleteProject(project.projectId)
+      navigate('/')
+    } catch (err) {
+      setArchiveError(err.message)
+      setArchiving(false)
+    }
+  }
+
   if (loading) return <Loading label="Loading project…" />
   if (error) return <ErrorMessage error={error} onRetry={reload} />
 
@@ -87,6 +104,11 @@ export default function ProjectDetailPage() {
             <button type="button" className="secondary" onClick={() => toggleArchive(project)} disabled={archiving}>
               {archiving ? 'Saving…' : project.archivedAt ? 'Restore project' : 'Archive project'}
             </button>
+            {isAdmin && (
+              <button type="button" className="secondary danger-button" onClick={() => handleDelete(project)} disabled={archiving}>
+                Delete
+              </button>
+            )}
           </span>
         )}
       </div>

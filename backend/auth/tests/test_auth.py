@@ -20,12 +20,13 @@ import function
 from controller import AuthController
 from service import AuthService
 from shared import tokens
-from shared.errors import InvalidCredentialsError, ValidationError
+from shared.errors import AuthenticationError, InvalidCredentialsError, ValidationError
 from shared.http_utils import Request, Router
 
 PASSWORD = "Password123!"
 ADMIN = {
     "id": 1, "username": "admin", "first_name": "Alice", "last_name": "Admin", "role": "admin", "employee_id": None,
+    "deactivated_at": None,
     "password_hashed": bcrypt.hashpw(PASSWORD.encode(), bcrypt.gensalt(4)).decode(),
 }
 
@@ -78,6 +79,13 @@ def test_login_username_is_case_insensitive(service):
 def test_wrong_username_or_password_share_one_error(service, username, password):
     with pytest.raises(InvalidCredentialsError, match="Invalid username or password"):
         service.login(username, password)
+
+
+def test_deactivated_account_cannot_log_in(monkeypatch):
+    repo = FakeAuthRepository()
+    monkeypatch.setattr(repo, "find_user_by_username", lambda u: {**ADMIN, "deactivated_at": "2026-10-01"})
+    with pytest.raises(AuthenticationError, match="deactivated"):
+        AuthService(repo).login("admin", PASSWORD)
 
 
 # Controller

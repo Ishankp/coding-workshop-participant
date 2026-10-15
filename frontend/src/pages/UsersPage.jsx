@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { useApiData } from '../hooks/useApiData'
 import { listUsers } from '../services/userService'
+import AccountPanel from '../components/AccountPanel'
 import NewUserForm from '../components/NewUserForm'
+import { formatCurrency } from '../utils/format'
 import { ErrorMessage, Loading } from '../components/StatusMessage'
 
 /**
@@ -12,14 +14,17 @@ import { ErrorMessage, Loading } from '../components/StatusMessage'
  * them on a project; until then they're "new hires" visible only here.
  */
 export default function UsersPage() {
-  const isAdmin = useAuth().user.role === 'admin'
+  const { user: me } = useAuth()
+  const isAdmin = me.role === 'admin'
   const { data: users, error, loading, reload } = useApiData(listUsers)
   const [creating, setCreating] = useState(false)
   const [notice, setNotice] = useState('')
+  const [openId, setOpenId] = useState(null)
+  const openAccount = users?.find((u) => u.userId === openId) ?? null
 
   if (!isAdmin) return <ErrorMessage error={{ status: 403, message: 'Only admins can manage accounts.' }} />
 
-  const managers = (users ?? []).filter((u) => u.role === 'manager' && u.employeeId !== null)
+  const managers = (users ?? []).filter((u) => u.role === 'manager' && u.employeeId !== null && !u.deactivatedAt)
 
   return (
     <>
@@ -57,6 +62,16 @@ export default function UsersPage() {
       {loading && <Loading label="Loading accounts…" />}
       {error && <ErrorMessage error={error} onRetry={reload} />}
 
+      {openAccount && (
+        <AccountPanel
+          key={openAccount.userId}
+          account={openAccount}
+          isSelf={openAccount.username === me.username}
+          onChanged={async () => reload()}
+          onClose={() => setOpenId(null)}
+        />
+      )}
+
       {users && (
         <div className="card table-wrap people-table">
           <table>
@@ -66,14 +81,21 @@ export default function UsersPage() {
                 <th scope="col">Email</th>
                 <th scope="col">Role</th>
                 <th scope="col">Title</th>
+                <th scope="col" className="num">
+                  Salary
+                </th>
                 <th scope="col">Manager</th>
+                <th scope="col">
+                  <span className="visually-hidden">Actions</span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.userId}>
+                <tr key={u.userId} className={u.deactivatedAt ? 'row-deactivated' : ''}>
                   <td>
                     {u.employeeId ? <Link to={`/employees/${u.employeeId}`}>{u.name}</Link> : u.name}
+                    {u.deactivatedAt && <span className="status-badge"> Deactivated</span>}
                     <div className="muted small">{u.username}</div>
                   </td>
                   <td>{u.email}</td>
@@ -81,12 +103,18 @@ export default function UsersPage() {
                     <span className="role-badge">{u.role}</span>
                   </td>
                   <td>{u.title ?? <span className="muted">—</span>}</td>
+                  <td className="num">{u.employeeId ? formatCurrency(u.salary) : <span className="muted">—</span>}</td>
                   <td>
                     {u.manager ? (
                       <Link to={`/employees/${u.manager.employeeId}`}>{u.manager.name}</Link>
                     ) : (
                       <span className="muted">—</span>
                     )}
+                  </td>
+                  <td className="num">
+                    <button type="button" className="secondary small-button" onClick={() => setOpenId(u.userId)}>
+                      Manage
+                    </button>
                   </td>
                 </tr>
               ))}

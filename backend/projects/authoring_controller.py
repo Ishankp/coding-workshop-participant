@@ -42,6 +42,13 @@ class AuthoringController:
         project_id = request.id_param("project_id", "projectId")
         return json_response(200, self._service.update_project(user, project_id, **_project_fields(request.json())))
 
+    def delete_project(self, request: Request) -> dict:
+        """DELETE /projects/{projectId} -> 204 | 400 | 401 | 403 | 404 | 409 (admins only)"""
+        user = require_user(request)
+        project_id = request.id_param("project_id", "projectId")
+        self._service.delete_project(user, project_id)
+        return json_response(204)
+
     def archive_project(self, request: Request) -> dict:
         """POST /projects/{projectId}/archive -> 200 {projectId, title, archivedAt} | 400 | 401 | 403 | 404"""
         user = require_user(request)

@@ -21,7 +21,7 @@ import function
 from authoring_controller import AuthoringController
 from authoring_service import AuthoringService
 from shared import tokens
-from shared.errors import ForbiddenError, NotFoundError, ValidationError
+from shared.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from shared.http_utils import Router
 from shared.tokens import CurrentUser
 
@@ -42,6 +42,7 @@ class FakeProjectRepository:
         self.milestones = []
         self.members = {1: {1, 3}}
         self.next_id = 100
+        self.entries = {1: 12}   # project id -> time entries logged on its milestones
 
     def find_project_by_id(self, project_id):
         return dict(self.projects[project_id]) if project_id in self.projects else None
@@ -77,6 +78,12 @@ class FakeProjectRepository:
     def find_all_milestone_dates(self, project_id):
         return [{"title": "Discovery", "start_date": date(2026, 7, 1), "end_date": date(2026, 8, 15)},
                 {"title": "Build", "start_date": date(2026, 10, 16), "end_date": date(2026, 12, 31)}] if project_id == 1 else []
+
+    def count_project_time_entries(self, project_id):
+        return self.entries.get(project_id, 0)
+
+    def delete_project(self, project_id):
+        return self.projects.pop(project_id, None) is not None
 
     def set_project_archived(self, project_id, archived):
         row = self.projects[project_id]
@@ -180,6 +187,33 @@ def test_only_project_managers_and_admins_edit(service, user):
         service.update_project(user, 1, "X", None, None, None)
 
 
+# Deleting (admins only)
+
+def test_admin_deletes_project_without_hours(service, repo):
+    repo.entries[1] = 0
+    service.delete_project(ADMIN, 1)
+    assert 1 not in repo.projects
+
+
+def test_delete_refused_while_hours_are_logged(service, repo):
+    with pytest.raises(ConflictError, match="12 time entries logged on it; archive it instead"):
+        service.delete_project(ADMIN, 1)
+    assert 1 in repo.projects
+
+
+@pytest.mark.parametrize("user", [MANAGER, EMPLOYEE])
+def test_only_admins_delete_projects(service, repo, user):
+    repo.entries[1] = 0
+    with pytest.raises(ForbiddenError, match="archive it instead"):
+        service.delete_project(user, 1)
+    assert 1 in repo.projects
+
+
+def test_delete_unknown_project_is_404(service):
+    with pytest.raises(NotFoundError):
+        service.delete_project(ADMIN, 404)
+
+
 # Archiving
 
 def test_manager_archives_and_restores_project(service, repo):
@@ -208,6 +242,7 @@ def fixture_handler(monkeypatch, service):
     router.add("POST", "/", controller.create_project)
     router.add("POST", "/{project_id}/milestones", controller.create_milestone)
     router.add("PUT", "/{project_id}", controller.update_project)
+    router.add("DELETE", "/{project_id}", controller.delete_project)
     router.add("POST", "/{project_id}/archive", controller.archive_project)
     router.add("POST", "/{project_id}/unarchive", controller.unarchive_project)
     monkeypatch.setattr(function, "router", router)
@@ -235,6 +270,17 @@ def test_handler_edits_project(handler):
     assert response["statusCode"] == 200 and json.loads(response["body"])["title"] == "Portal v2"
     ev["body"] = json.dumps({"title": "Portal", "startDate": "2026-08-01"})
     assert handler(ev)["statusCode"] == 400
+
+
+def test_handler_delete_statuses(handler, repo):
+    def delete(user):
+        ev = post("/1", user, None)
+        ev["requestContext"]["http"]["method"] = "DELETE"
+        return handler(ev)["statusCode"]
+    assert delete(MANAGER) == 403
+    assert delete(ADMIN) == 409
+    repo.entries[1] = 0
+    assert delete(ADMIN) == 204
 
 
 def test_handler_creates_milestone(handler):

@@ -213,6 +213,28 @@ class MilestoneService:
             "archivedAt": row["archived_at"],
         }
 
+    def delete_milestone(self, user: CurrentUser, milestone_id: int) -> None:
+        """
+        Permanently delete a milestone. Admins only; managers archive instead.
+
+        Raises:
+            NotFoundError: no such milestone.
+            ForbiddenError: not an admin.
+            ConflictError: hours have been logged on it (they'd be lost).
+        """
+        if not user.is_admin:
+            raise ForbiddenError("Only admins can delete milestones; archive it instead")
+        milestone = self._repository.find_milestone_by_id(milestone_id)
+        if milestone is None:
+            raise NotFoundError(f"Milestone {milestone_id} not found")
+        entries = self._repository.count_time_entries(milestone_id)
+        if entries:
+            raise ConflictError(
+                f"{milestone['title']} has {entries} time {'entry' if entries == 1 else 'entries'} logged on it; "
+                "archive it instead of deleting"
+            )
+        self._repository.delete_milestone(milestone_id)
+
     def set_archived(self, user: CurrentUser, milestone_id: int, archived: bool) -> dict:
         """
         Archive (hide from employees and progress) or restore a milestone.

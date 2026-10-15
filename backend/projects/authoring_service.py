@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 
 from repository import ProjectRepository
-from shared.errors import ForbiddenError, NotFoundError, ValidationError
+from shared.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from shared.tokens import CurrentUser
 from shared.validation import milestone_date_errors
 
@@ -91,6 +91,28 @@ class AuthoringService:
             "archivedAt": project["archived_at"],
             "completedAt": project["completed_at"],
         }
+
+    def delete_project(self, user: CurrentUser, project_id: int) -> None:
+        """
+        Permanently delete a project and everything under it. Admins only; managers archive instead.
+
+        Raises:
+            NotFoundError: no such project.
+            ForbiddenError: not an admin.
+            ConflictError: hours have been logged on it (they'd be lost).
+        """
+        if not user.is_admin:
+            raise ForbiddenError("Only admins can delete projects; archive it instead")
+        project = self._repository.find_project_by_id(project_id)
+        if project is None:
+            raise NotFoundError(f"Project {project_id} not found")
+        entries = self._repository.count_project_time_entries(project_id)
+        if entries:
+            raise ConflictError(
+                f"{project['title']} has {entries} time {'entry' if entries == 1 else 'entries'} logged on it; "
+                "archive it instead of deleting"
+            )
+        self._repository.delete_project(project_id)
 
     def set_project_archived(self, user: CurrentUser, project_id: int, archived: bool) -> dict:
         """

@@ -1,15 +1,18 @@
 """
 User service: admin-only account management.
 
-Only admins can list accounts or create new ones. Managers and employees get
-an employee record (title, salary, manager); admins don't. A manager must be
-chosen from people whose role is manager, and is fixed once set.
+Only admins can list, create, edit, deactivate or reset the password of
+accounts. Managers and employees get an employee record (title, salary,
+manager); admins don't. A manager must be chosen from people whose role is
+manager, and is fixed once set. Roles can move between manager and employee
+(not to or from admin), and a manager with direct reports can't be demoted.
+Deactivated accounts can't log in and drop out of pickers but keep history.
 """
 
 import bcrypt
 
 from repository import UserRepository
-from shared.errors import ConflictError, ForbiddenError, ValidationError
+from shared.errors import ConflictError, ForbiddenError, NotFoundError, ValidationError
 from shared.timeline import full_name
 from shared.tokens import CurrentUser
 
@@ -27,8 +30,8 @@ class UserService:
         Return every account.
 
         Returns:
-            list: [{userId, username, email, firstName, lastName, name, role,
-                    employeeId, title, manager: {employeeId, name} | None}]
+            list: [{userId, username, email, firstName, lastName, name, role, deactivatedAt,
+                    employeeId, title, salary, manager: {employeeId, name} | None}]
 
         Raises:
             ForbiddenError: not an admin.
@@ -43,8 +46,10 @@ class UserService:
                 "lastName": row["last_name"],
                 "name": full_name(row["first_name"], row["last_name"], row["username"]),
                 "role": row["role"],
+                "deactivatedAt": row["deactivated_at"],
                 "employeeId": row["employee_id"],
                 "title": row["title"],
+                "salary": row["salary"],
                 "manager": (
                     {
                         "employeeId": row["manager_id"],
@@ -109,6 +114,71 @@ class UserService:
             "name": full_name(data.get("first_name"), data.get("last_name"), data["username"]),
             "role": data["role"],
         }
+
+    def update_user(self, user: CurrentUser, user_id: int, data: dict) -> dict:
+        """
+        Change an account's email, name and role, and (for managers/employees) title and salary.
+
+        `data` is controller-validated: {email, first_name, last_name, role, title, salary}.
+
+        Returns:
+            dict: {userId, username, email, name, role}
+
+        Raises:
+            ForbiddenError: not an admin.
+            NotFoundError: no such account.
+            ConflictError: another account already uses the email.
+            ValidationError: a role change to/from admin, or demoting a manager who has direct reports.
+        """
+        self._require_admin(user)
+        account = self._load(user_id)
+
+        if self._repository.email_taken_by_other(data["email"], user_id):
+            raise ConflictError(f"Another account already uses {data['email']}")
+        if (account["role"] == "admin") != (data["role"] == "admin"):
+            raise ValidationError("Can't change to or from admin", {"role": "Admins can't be converted to or from other roles"})
+        if account["role"] == "manager" and data["role"] == "employee" and account["direct_reports"]:
+            raise ValidationError("Still has direct reports", {
+                "role": f"Still manages {account['direct_reports']} {'person' if account['direct_reports'] == 1 else 'people'}",
+            })
+
+        employee = None if account["employee_id"] is None else {"title": data.get("title"), "salary": data.get("salary")}
+        self._repository.update_user(user_id, data["email"], data.get("first_name"), data.get("last_name"), data["role"], employee)
+        return {
+            "userId": user_id,
+            "username": account["username"],
+            "email": data["email"],
+            "name": full_name(data.get("first_name"), data.get("last_name"), account["username"]),
+            "role": data["role"],
+        }
+
+    def set_password(self, user: CurrentUser, user_id: int, password: str) -> None:
+        """Replace an account's password (admins only)."""
+        self._require_admin(user)
+        self._load(user_id)
+        self._repository.set_password(user_id, bcrypt.hashpw(password.encode(), bcrypt.gensalt(12)).decode())
+
+    def set_deactivated(self, user: CurrentUser, user_id: int, deactivated: bool) -> dict:
+        """
+        Deactivate (can't log in, hidden from pickers) or reactivate an account.
+
+        Raises:
+            ForbiddenError: not an admin.
+            NotFoundError: no such account.
+            ValidationError: deactivating your own account.
+        """
+        self._require_admin(user)
+        self._load(user_id)
+        if deactivated and user_id == user.id:
+            raise ValidationError("You can't deactivate your own account", {"userId": "That's you"})
+        row = self._repository.set_deactivated(user_id, deactivated)
+        return {"userId": user_id, "deactivatedAt": row["deactivated_at"]}
+
+    def _load(self, user_id: int) -> dict:
+        account = self._repository.find_user(user_id)
+        if account is None:
+            raise NotFoundError(f"Account {user_id} not found")
+        return account
 
     @staticmethod
     def _require_admin(user: CurrentUser) -> None:

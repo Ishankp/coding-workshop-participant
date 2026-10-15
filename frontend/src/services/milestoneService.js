@@ -49,6 +49,16 @@ export function reopenMilestone(milestoneId) {
 }
 
 /**
+ * Permanently delete a milestone (admins only; refused with 409 while hours are logged on it).
+ * DELETE /api/milestones/{milestoneId}
+ * @param {number|string} milestoneId
+ * @returns {Promise<null>}
+ */
+export function deleteMilestone(milestoneId) {
+  return apiRequest(`/api/milestones/${encodeURIComponent(milestoneId)}`, { method: 'DELETE' })
+}
+
+/**
  * Archive a milestone: hidden from employees and left out of progress; still counted in dependencies and costs.
  * POST /api/milestones/{milestoneId}/archive (managers who are members, and admins)
  * @param {number|string} milestoneId
